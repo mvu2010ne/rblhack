@@ -1,5 +1,5 @@
--- MV Hub | Axiom Build v6.3
--- Auto Farm Select: Load all mobs on map, show level, choose target, choose weapon, auto farm
+-- MV Hub | Axiom Build v6.4
+-- FIX: Click icon mở menu, kéo icon di chuyển được
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -33,11 +33,12 @@ local IsResizing = false
 local ResizeStartPos
 local ResizeStartSize
 
--- // Icon Drag
+-- // Icon Drag Variables
 local IsDraggingIcon = false
-local DragStartPos
-local IconStartPos
-local DragThreshold = 15
+local IsClickingIcon = false
+local DragStartPos = nil
+local IconStartPos = nil
+local DragThreshold = 10
 
 -- // Toggle States
 local Toggles = {
@@ -90,12 +91,9 @@ local ESPUpdateRate = 0.3
 local TracerLines = {}
 local TracerUpdateRate = 0.1
 
--- // ============ GET ALL MOBS WITH LEVEL ============
+-- // ============ GET ALL MOBS ============
 local function GetAllMobs()
     local mobs = {}
-    local playerLevel = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Level") 
-        and LocalPlayer.Data.Level.Value or 0
-    
     for _, v in pairs(Workspace:GetDescendants()) do
         if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
             local name = v.Name:lower()
@@ -104,25 +102,18 @@ local function GetAllMobs()
                 if humanoid and humanoid.Health > 0 then
                     local root = v:FindFirstChild("HumanoidRootPart")
                     if root then
-                        -- Lấy level từ tên hoặc từ attribute
                         local level = 0
                         local mobName = v.Name
-                        -- Thử lấy level từ tên (vd: "Bandit Lv.15" -> 15)
                         local levelMatch = string.match(mobName, "Lv%.?(%d+)") or string.match(mobName, "Level (%d+)") or string.match(mobName, "(%d+)")
                         if levelMatch then
                             level = tonumber(levelMatch) or 0
                         end
-                        -- Thử lấy từ attribute
                         local levelAttr = v:FindFirstChild("Level")
-                        if levelAttr then
-                            level = levelAttr.Value
-                        end
-                        -- Thử lấy từ humanoid display name
+                        if levelAttr then level = levelAttr.Value end
                         if level == 0 and humanoid.DisplayName then
                             local dnMatch = string.match(humanoid.DisplayName, "(%d+)")
                             if dnMatch then level = tonumber(dnMatch) or 0 end
                         end
-                        
                         table.insert(mobs, {
                             Model = v,
                             Name = v.Name,
@@ -138,24 +129,21 @@ local function GetAllMobs()
             end
         end
     end
-    
-    -- Sắp xếp theo level tăng dần
-    table.sort(mobs, function(a, b)
-        return a.Level < b.Level
-    end)
-    
+    table.sort(mobs, function(a, b) return a.Level < b.Level end)
     return mobs
 end
 
--- // ============ UPDATE MOB LIST UI ============
+-- // ============ UPDATE MOB LIST ============
 local function UpdateMobList()
     local combat = CategoryBoxes["⚔️ Combat"]
     if not combat then return end
     
-    -- Xóa mob list cũ (giữ lại các toggle và dropdown)
     local toRemove = {}
     for _, child in pairs(combat:GetChildren()) do
         if child:IsA("ScrollingFrame") and child.Name == "MobList" then
+            table.insert(toRemove, child)
+        end
+        if child:IsA("TextButton") and child.Name == "RefreshMobs" then
             table.insert(toRemove, child)
         end
     end
@@ -164,15 +152,13 @@ local function UpdateMobList()
     end
     MobButtons = {}
     
-    -- Scan all mobs
     AllMobs = GetAllMobs()
     
-    -- Tạo ScrollingFrame cho danh sách quái
     local mobScroll = Instance.new("ScrollingFrame")
     mobScroll.Name = "MobList"
     mobScroll.Parent = combat
     mobScroll.Size = UDim2.new(1, -6, 0, 120)
-    mobScroll.Position = UDim2.new(0, 3, 0, 180) -- Đặt dưới các toggle
+    mobScroll.Position = UDim2.new(0, 3, 0, 180)
     mobScroll.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
     mobScroll.BackgroundTransparency = 0.3
     mobScroll.BorderSizePixel = 0
@@ -207,19 +193,16 @@ local function UpdateMobList()
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Font = Enum.Font.Gotham
         btn.BorderSizePixel = 0
+        btn.MobData = mob
         
         local btnCorner = Instance.new("UICorner")
         btnCorner.Parent = btn
         btnCorner.CornerRadius = UDim.new(0, 3)
         
-        -- Lưu mob data vào button
-        btn.MobData = mob
-        
         btn.MouseButton1Click:Connect(function()
             SelectedMob = mob.Model
             SelectedMobName = mob.Name
             SelectedMobPosition = mob.Position
-            -- Highlight button
             for _, b in pairs(MobButtons) do
                 if b and b ~= btn then
                     b.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
@@ -230,15 +213,13 @@ local function UpdateMobList()
             btn.BackgroundTransparency = 0
             print("🎯 Đã chọn quái: " .. mob.Name .. " (Lv." .. mob.Level .. ")")
         end)
-        
         table.insert(MobButtons, btn)
         yOff = yOff + 32
     end
-    
     mobScroll.CanvasSize = UDim2.new(0, 0, 0, yOff + 10)
     
-    -- Refresh nút quét lại
     local refreshBtn = Instance.new("TextButton")
+    refreshBtn.Name = "RefreshMobs"
     refreshBtn.Parent = combat
     refreshBtn.Size = UDim2.new(0.5, -6, 0, 28)
     refreshBtn.Position = UDim2.new(0, 3, 0, 310)
@@ -248,273 +229,21 @@ local function UpdateMobList()
     refreshBtn.TextScaled = true
     refreshBtn.Font = Enum.Font.GothamBold
     refreshBtn.BorderSizePixel = 0
-    
     local corner2 = Instance.new("UICorner")
     corner2.Parent = refreshBtn
     corner2.CornerRadius = UDim.new(0, 4)
-    
     refreshBtn.MouseButton1Click:Connect(function()
         UpdateMobList()
         print("🔄 Đã quét lại danh sách quái")
     end)
     
-    -- Cập nhật canvas size cho combat box
     local parentScroll = combat.Parent
     if parentScroll and parentScroll:IsA("ScrollingFrame") then
         parentScroll.CanvasSize = UDim2.new(0, 0, 0, 360)
     end
 end
 
--- // ============ AUTO FARM CORE ============
-local function GetWeapon(toolName)
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    
-    local backpack = LocalPlayer.Backpack
-    for _, tool in pairs(char:GetChildren()) do
-        if tool:IsA("Tool") then
-            local name = tool.Name:lower()
-            if toolName == "Melee" and (name:find("melee") or name:find("fist") or name:find("combat") or name:find("superhuman") or name:find("dark step") or name:find("electric") or name:find("fighting")) then
-                return tool
-            elseif toolName == "Sword" and (name:find("sword") or name:find("blade") or name:find("katana") or name:find("cutlass") or name:find("saber") or name:find("dual")) then
-                return tool
-            elseif toolName == "Gun" and (name:find("gun") or name:find("pistol") or name:find("rifle") or name:find("cannon") or name:find("bazooka") or name:find("musket")) then
-                return tool
-            elseif toolName == "Fruit" and (name:find("fruit") or name:find("devil") or name:find("blox") or name:find("flame") or name:find("ice") or name:find("light") or name:find("dark") or name:find("venom") or name:find("dough")) then
-                return tool
-            end
-        end
-    end
-    
-    for _, tool in pairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            local name = tool.Name:lower()
-            if toolName == "Melee" and (name:find("melee") or name:find("fist") or name:find("combat") or name:find("superhuman") or name:find("dark step") or name:find("electric") or name:find("fighting")) then
-                return tool
-            elseif toolName == "Sword" and (name:find("sword") or name:find("blade") or name:find("katana") or name:find("cutlass") or name:find("saber") or name:find("dual")) then
-                return tool
-            elseif toolName == "Gun" and (name:find("gun") or name:find("pistol") or name:find("rifle") or name:find("cannon") or name:find("bazooka") or name:find("musket")) then
-                return tool
-            elseif toolName == "Fruit" and (name:find("fruit") or name:find("devil") or name:find("blox") or name:find("flame") or name:find("ice") or name:find("light") or name:find("dark") or name:find("venom") or name:find("dough")) then
-                return tool
-            end
-        end
-    end
-    
-    return nil
-end
-
-local function EquipWeapon(weaponType)
-    local char = LocalPlayer.Character
-    if not char then return false end
-    
-    local tool = GetWeapon(weaponType)
-    if tool then
-        if tool.Parent == LocalPlayer.Backpack then
-            tool.Parent = char
-        end
-        if tool.Parent == char then
-            char.Humanoid:EquipTool(tool)
-            return true
-        end
-    end
-    return false
-end
-
-local function UseSkill()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    
-    for _, child in pairs(char:GetChildren()) do
-        if child:IsA("Tool") then
-            local remote = child:FindFirstChild("RemoteEvent") or child:FindFirstChild("Activate")
-            if remote then
-                remote:FireServer()
-                return true
-            end
-            if child:FindFirstChild("Handle") then
-                local handle = child.Handle
-                if handle and handle:FindFirstChild("ClickDetector") then
-                    handle.ClickDetector:Click()
-                    return true
-                end
-            end
-        end
-    end
-    
-    local currentTool = char:FindFirstChildOfClass("Tool")
-    if currentTool then
-        local remote = currentTool:FindFirstChild("RemoteEvent")
-        if remote then
-            remote:FireServer()
-            return true
-        end
-    end
-    
-    return false
-end
-
-local function AutoAttack(target)
-    if not target then return false end
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-    local targetRoot = target:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return false end
-    
-    local lookVector = (targetRoot.Position - root.Position).Unit
-    root.CFrame = CFrame.new(root.Position, root.Position + lookVector)
-    
-    local humanoid = char:FindFirstChild("Humanoid")
-    if humanoid then
-        mouse1click()
-        return true
-    end
-    return false
-end
-
-local function AutoFarmLoop()
-    spawn(function()
-        while wait(0.1) do
-            if Toggles.AutoFarm then
-                local char = LocalPlayer.Character
-                if not char then continue end
-                local humanoid = char:FindFirstChild("Humanoid")
-                if not humanoid or humanoid.Health <= 0 then continue end
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if not root then continue end
-                
-                -- Nếu bật gom quái
-                if Toggles.PullMobs then
-                    PullPoint = root.Position
-                    PullMobsToPoint(PullPoint, PullRange)
-                    wait(0.3)
-                end
-                
-                -- Kiểm tra target đã chọn
-                local target = SelectedMob
-                local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
-                local targetHumanoid = target and target:FindFirstChild("Humanoid")
-                
-                -- Nếu target chết hoặc không tồn tại, tìm lại
-                if not target or not target.Parent or not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
-                    -- Tìm quái gần nhất cùng tên
-                    local mobs = GetAllMobs()
-                    for _, m in pairs(mobs) do
-                        if m.Name == SelectedMobName and m.Humanoid.Health > 0 then
-                            SelectedMob = m.Model
-                            SelectedMobPosition = m.Position
-                            target = SelectedMob
-                            targetRoot = m.Root
-                            targetHumanoid = m.Humanoid
-                            break
-                        end
-                    end
-                    -- Nếu không tìm thấy, tìm quái gần nhất
-                    if not target then
-                        local nearest = GetNearestMob()
-                        if nearest then
-                            SelectedMob = nearest
-                            target = nearest
-                            targetRoot = nearest:FindFirstChild("HumanoidRootPart")
-                            targetHumanoid = nearest:FindFirstChild("Humanoid")
-                        else
-                            -- Không có quái, đứng yên
-                            humanoid:MoveTo(humanoid.RootPart.Position)
-                            continue
-                        end
-                    end
-                end
-                
-                if target and targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-                    local dist = (root.Position - targetRoot.Position).Magnitude
-                    local attackDist = Toggles.PullMobs and 8 or 10
-                    
-                    if dist > attackDist then
-                        -- Di chuyển đến quái
-                        local moveDir = (targetRoot.Position - root.Position).Unit
-                        humanoid:MoveTo(root.Position + moveDir * math.min(dist - attackDist, 20))
-                    else
-                        -- Đứng lại và tấn công
-                        humanoid:MoveTo(humanoid.RootPart.Position)
-                        
-                        EquipWeapon(AutoFarmWeapon)
-                        
-                        if Toggles.AutoSkill and AutoFarmSkillCooldown <= 0 then
-                            if UseSkill() then
-                                AutoFarmSkillCooldown = 2
-                            end
-                        end
-                        
-                        if AutoFarmAttackCooldown <= 0 then
-                            AutoAttack(target)
-                            AutoFarmAttackCooldown = 0.5
-                        end
-                    end
-                else
-                    humanoid:MoveTo(humanoid.RootPart.Position)
-                end
-                
-                if AutoFarmAttackCooldown > 0 then
-                    AutoFarmAttackCooldown = AutoFarmAttackCooldown - 0.1
-                end
-                if AutoFarmSkillCooldown > 0 then
-                    AutoFarmSkillCooldown = AutoFarmSkillCooldown - 0.1
-                end
-            end
-        end
-    end)
-end
-
--- // ============ PULL MOBS ============
-local function GetMobsInRange(center, range)
-    local mobs = {}
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-            local name = v.Name:lower()
-            if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
-                local root = v.HumanoidRootPart
-                local humanoid = v.Humanoid
-                if humanoid and humanoid.Health > 0 then
-                    local dist = (center - root.Position).Magnitude
-                    if dist <= range then
-                        table.insert(mobs, v)
-                    end
-                end
-            end
-        end
-    end
-    return mobs
-end
-
-local function PullMobsToPoint(center, range)
-    if not center then return 0 end
-    
-    local mobs = GetMobsInRange(center, range)
-    for _, mob in pairs(mobs) do
-        local root = mob:FindFirstChild("HumanoidRootPart")
-        local humanoid = mob:FindFirstChild("Humanoid")
-        if root and humanoid and humanoid.Health > 0 then
-            local dist = (center - root.Position).Magnitude
-            if dist > 5 then
-                local moveDir = (center - root.Position).Unit
-                local targetPos = center - moveDir * 3
-                local bv = root:FindFirstChild("PullVelocity")
-                if not bv then
-                    bv = Instance.new("BodyVelocity")
-                    bv.Name = "PullVelocity"
-                    bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                    bv.Parent = root
-                end
-                bv.Velocity = (targetPos - root.Position).Unit * 25
-                game:GetService("Debris"):AddItem(bv, 0.3)
-            end
-        end
-    end
-    return #mobs
-end
-
+-- // ============ GET NEAREST MOB ============
 local function GetNearestMob()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -540,8 +269,234 @@ local function GetNearestMob()
             end
         end
     end
-    
     return nearest
+end
+
+-- // ============ GET WEAPON ============
+local function GetWeapon(toolName)
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local backpack = LocalPlayer.Backpack
+    
+    local checkList = {}
+    for _, tool in pairs(char:GetChildren()) do
+        if tool:IsA("Tool") then table.insert(checkList, tool) end
+    end
+    for _, tool in pairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") then table.insert(checkList, tool) end
+    end
+    
+    for _, tool in pairs(checkList) do
+        local name = tool.Name:lower()
+        if toolName == "Melee" and (name:find("melee") or name:find("fist") or name:find("combat") or name:find("superhuman") or name:find("dark step") or name:find("electric") or name:find("fighting") or name:find("death step") or name:find("shark") or name:find("dragon")) then
+            return tool
+        elseif toolName == "Sword" and (name:find("sword") or name:find("blade") or name:find("katana") or name:find("cutlass") or name:find("saber") or name:find("dual") or name:find("pole") or name:find("trident") or name:find("pipe")) then
+            return tool
+        elseif toolName == "Gun" and (name:find("gun") or name:find("pistol") or name:find("rifle") or name:find("cannon") or name:find("bazooka") or name:find("musket") or name:find("flintlock") or name:find("shotgun")) then
+            return tool
+        elseif toolName == "Fruit" and (name:find("fruit") or name:find("devil") or name:find("blox") or name:find("flame") or name:find("ice") or name:find("light") or name:find("dark") or name:find("venom") or name:find("dough") or name:find("leopard") or name:find("dragon") or name:find("gravity")) then
+            return tool
+        end
+    end
+    return nil
+end
+
+-- // ============ EQUIP WEAPON ============
+local function EquipWeapon(weaponType)
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local tool = GetWeapon(weaponType)
+    if tool then
+        if tool.Parent == LocalPlayer.Backpack then
+            tool.Parent = char
+        end
+        if tool.Parent == char then
+            char.Humanoid:EquipTool(tool)
+            return true
+        end
+    end
+    return false
+end
+
+-- // ============ USE SKILL ============
+local function UseSkill()
+    local char = LocalPlayer.Character
+    if not char then return false end
+    for _, child in pairs(char:GetChildren()) do
+        if child:IsA("Tool") then
+            local remote = child:FindFirstChild("RemoteEvent") or child:FindFirstChild("Activate")
+            if remote then
+                remote:FireServer()
+                return true
+            end
+            if child:FindFirstChild("Handle") then
+                local handle = child.Handle
+                if handle and handle:FindFirstChild("ClickDetector") then
+                    handle.ClickDetector:Click()
+                    return true
+                end
+            end
+        end
+    end
+    local currentTool = char:FindFirstChildOfClass("Tool")
+    if currentTool then
+        local remote = currentTool:FindFirstChild("RemoteEvent")
+        if remote then
+            remote:FireServer()
+            return true
+        end
+    end
+    return false
+end
+
+-- // ============ AUTO ATTACK ============
+local function AutoAttack(target)
+    if not target then return false end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local targetRoot = target:FindFirstChild("HumanoidRootPart")
+    if not targetRoot then return false end
+    
+    local lookVector = (targetRoot.Position - root.Position).Unit
+    root.CFrame = CFrame.new(root.Position, root.Position + lookVector)
+    
+    local humanoid = char:FindFirstChild("Humanoid")
+    if humanoid then
+        mouse1click()
+        return true
+    end
+    return false
+end
+
+-- // ============ PULL MOBS ============
+local function GetMobsInRange(center, range)
+    local mobs = {}
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            local name = v.Name:lower()
+            if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
+                local root = v.HumanoidRootPart
+                local humanoid = v.Humanoid
+                if humanoid and humanoid.Health > 0 then
+                    local dist = (center - root.Position).Magnitude
+                    if dist <= range then
+                        table.insert(mobs, v)
+                    end
+                end
+            end
+        end
+    end
+    return mobs
+end
+
+local function PullMobsToPoint(center, range)
+    if not center then return 0 end
+    local mobs = GetMobsInRange(center, range)
+    for _, mob in pairs(mobs) do
+        local root = mob:FindFirstChild("HumanoidRootPart")
+        local humanoid = mob:FindFirstChild("Humanoid")
+        if root and humanoid and humanoid.Health > 0 then
+            local dist = (center - root.Position).Magnitude
+            if dist > 5 then
+                local moveDir = (center - root.Position).Unit
+                local targetPos = center - moveDir * 3
+                local bv = root:FindFirstChild("PullVelocity")
+                if not bv then
+                    bv = Instance.new("BodyVelocity")
+                    bv.Name = "PullVelocity"
+                    bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+                    bv.Parent = root
+                end
+                bv.Velocity = (targetPos - root.Position).Unit * 25
+                game:GetService("Debris"):AddItem(bv, 0.3)
+            end
+        end
+    end
+    return #mobs
+end
+
+-- // ============ AUTO FARM LOOP ============
+local function AutoFarmLoop()
+    spawn(function()
+        while wait(0.1) do
+            if Toggles.AutoFarm then
+                local char = LocalPlayer.Character
+                if not char then continue end
+                local humanoid = char:FindFirstChild("Humanoid")
+                if not humanoid or humanoid.Health <= 0 then continue end
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not root then continue end
+                
+                if Toggles.PullMobs then
+                    PullMobsToPoint(root.Position, 30)
+                    wait(0.3)
+                end
+                
+                local target = SelectedMob
+                local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
+                local targetHumanoid = target and target:FindFirstChild("Humanoid")
+                
+                if not target or not target.Parent or not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
+                    local mobs = GetAllMobs()
+                    for _, m in pairs(mobs) do
+                        if m.Name == SelectedMobName and m.Humanoid.Health > 0 then
+                            SelectedMob = m.Model
+                            SelectedMobPosition = m.Position
+                            target = SelectedMob
+                            targetRoot = m.Root
+                            targetHumanoid = m.Humanoid
+                            break
+                        end
+                    end
+                    if not target then
+                        local nearest = GetNearestMob()
+                        if nearest then
+                            SelectedMob = nearest
+                            target = nearest
+                            targetRoot = nearest:FindFirstChild("HumanoidRootPart")
+                            targetHumanoid = nearest:FindFirstChild("Humanoid")
+                        else
+                            humanoid:MoveTo(humanoid.RootPart.Position)
+                            continue
+                        end
+                    end
+                end
+                
+                if target and targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+                    local dist = (root.Position - targetRoot.Position).Magnitude
+                    local attackDist = Toggles.PullMobs and 8 or 10
+                    
+                    if dist > attackDist then
+                        local moveDir = (targetRoot.Position - root.Position).Unit
+                        humanoid:MoveTo(root.Position + moveDir * math.min(dist - attackDist, 20))
+                    else
+                        humanoid:MoveTo(humanoid.RootPart.Position)
+                        EquipWeapon(AutoFarmWeapon)
+                        if Toggles.AutoSkill and AutoFarmSkillCooldown <= 0 then
+                            if UseSkill() then
+                                AutoFarmSkillCooldown = 2
+                            end
+                        end
+                        if AutoFarmAttackCooldown <= 0 then
+                            AutoAttack(target)
+                            AutoFarmAttackCooldown = 0.5
+                        end
+                    end
+                else
+                    humanoid:MoveTo(humanoid.RootPart.Position)
+                end
+                
+                if AutoFarmAttackCooldown > 0 then
+                    AutoFarmAttackCooldown = AutoFarmAttackCooldown - 0.1
+                end
+                if AutoFarmSkillCooldown > 0 then
+                    AutoFarmSkillCooldown = AutoFarmSkillCooldown - 0.1
+                end
+            end
+        end
+    end)
 end
 
 -- // ============ NOCLIP ============
@@ -601,7 +556,6 @@ local function FlyLoop()
                     flyBodyGyro = nil
                     continue
                 end
-                
                 local rootPart = char:FindFirstChild("HumanoidRootPart")
                 if not rootPart then
                     flyEnabled = false
@@ -611,14 +565,12 @@ local function FlyLoop()
                     flyBodyGyro = nil
                     continue
                 end
-
                 if not flyBodyPosition then
                     flyBodyPosition = Instance.new("BodyPosition")
                     flyBodyPosition.MaxForce = Vector3.new(1e6, 1e6, 1e6)
                     flyBodyPosition.P = 2000
                     flyBodyPosition.Parent = rootPart
                 end
-                
                 if not flyBodyGyro then
                     flyBodyGyro = Instance.new("BodyGyro")
                     flyBodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
@@ -626,7 +578,6 @@ local function FlyLoop()
                     flyBodyGyro.D = 100
                     flyBodyGyro.Parent = rootPart
                 end
-
                 local moveDirection = Vector3.new(0, 0, 0)
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then 
                     moveDirection = moveDirection + Camera.CFrame.LookVector * Vector3.new(1, 0, 1)
@@ -646,11 +597,9 @@ local function FlyLoop()
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 
                     moveDirection = moveDirection - Vector3.new(0, 1, 0)
                 end
-
                 if moveDirection.Magnitude > 0 then
                     moveDirection = moveDirection.Unit * FlySpeed
                 end
-                
                 flyBodyPosition.Position = rootPart.Position + moveDirection
                 flyBodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + Camera.CFrame.LookVector)
             else
@@ -669,7 +618,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not char then return end
         local rootPart = char:FindFirstChild("HumanoidRootPart")
         if not rootPart then return end
-
         flyEnabled = not flyEnabled
         if flyEnabled then
             flyBodyPosition = Instance.new("BodyPosition")
@@ -688,37 +636,52 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- // ============ ICON DRAG ============
+-- // ============ ICON DRAG + CLICK - FIXED ============
 local function SetupIconDrag()
+    -- Bắt đầu input trên icon
     ToggleBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             IsDraggingIcon = true
+            IsClickingIcon = true
             DragStartPos = input.Position
             IconStartPos = ToggleBtn.Position
         end
     end)
 
+    -- Di chuyển
     ToggleBtn.InputChanged:Connect(function(input)
         if IsDraggingIcon and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - DragStartPos
-            local newX = math.clamp(IconStartPos.X.Offset + delta.X, 0, 100)
-            local newY = math.clamp(IconStartPos.Y.Offset + delta.Y, 0, 100)
+            -- Nếu kéo quá ngưỡng -> đánh dấu là đang kéo, không phải click
+            if delta.Magnitude > DragThreshold then
+                IsClickingIcon = false
+            end
+            -- Cập nhật vị trí icon
+            local newX = math.clamp(IconStartPos.X.Offset + delta.X, 0, 95)
+            local newY = math.clamp(IconStartPos.Y.Offset + delta.Y, 0, 95)
             ToggleBtn.Position = UDim2.new(0, newX, 0, newY)
         end
     end)
 
+    -- Kết thúc input
     ToggleBtn.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local dist = (input.Position - DragStartPos).Magnitude
-            if dist < DragThreshold then
+            -- Nếu là click (không kéo) -> toggle menu
+            if IsClickingIcon then
                 MenuOpen = not MenuOpen
                 MainFrame.Visible = MenuOpen
                 if MenuOpen then 
                     ScanMap()
                     UpdateMobList()
                 end
+                -- Hiệu ứng nhấp nháy
+                TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
+                wait(0.1)
+                TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
             end
             IsDraggingIcon = false
+            IsClickingIcon = false
+            DragStartPos = nil
         end
     end)
 end
@@ -732,7 +695,6 @@ local function CreateTracer(fromPart, toPart, color)
             return nil
         end
     end
-    
     local line = Instance.new("Part")
     line.Name = "TracerLine"
     line.Size = Vector3.new(0.1, 0.1, 0.1)
@@ -742,12 +704,10 @@ local function CreateTracer(fromPart, toPart, color)
     line.BrickColor = BrickColor.new(color or "Bright red")
     line.Transparency = 0.2
     line.Parent = workspace
-    
     local att1 = Instance.new("Attachment")
     att1.Parent = fromPart
     local att2 = Instance.new("Attachment")
     att2.Parent = toPart
-    
     local constraint = Instance.new("RopeConstraint")
     constraint.Parent = line
     constraint.Attachment0 = att1
@@ -756,7 +716,6 @@ local function CreateTracer(fromPart, toPart, color)
     constraint.Visible = true
     constraint.Color = color or Color3.fromRGB(255, 0, 0)
     constraint.Thickness = 0.05
-    
     return {
         Line = line,
         Constraint = constraint,
@@ -775,12 +734,10 @@ local function UpdateTracers()
                 if data.Line then data.Line:Destroy() end
             end
             TracerLines = {}
-            
             local char = LocalPlayer.Character
             if not char then continue end
             local root = char:FindFirstChild("HumanoidRootPart")
             if not root then continue end
-            
             if Toggles.TracerPlayers then
                 for _, player in pairs(Players:GetPlayers()) do
                     if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
@@ -790,7 +747,6 @@ local function UpdateTracers()
                     end
                 end
             end
-            
             if Toggles.TracerMobs then
                 for _, v in pairs(Workspace:GetDescendants()) do
                     if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
@@ -810,7 +766,6 @@ end
 -- // ============ SCAN MAP ============
 local function ScanMap()
     DetectedMapPoints = {}
-    
     for _, model in pairs(Workspace:GetDescendants()) do
         if model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") then
             local root = model.HumanoidRootPart
@@ -824,7 +779,6 @@ local function ScanMap()
             end
         end
     end
-    
     for _, part in pairs(Workspace:GetDescendants()) do
         if part:IsA("BasePart") and part.Size.Magnitude > 50 then
             if not string.find(part.Name, "Terrain") and not string.find(part.Name, "Baseplate") then
@@ -835,17 +789,14 @@ local function ScanMap()
             end
         end
     end
-    
     if #DetectedMapPoints == 0 then
         table.insert(DetectedMapPoints, {Name = "Center", Position = Vector3.new(0, 10, 0)})
     end
-    
     if #DetectedMapPoints > 30 then
         local newList = {}
         for i = 1, 30 do newList[i] = DetectedMapPoints[i] end
         DetectedMapPoints = newList
     end
-    
     UpdateTeleportBox()
     return DetectedMapPoints
 end
@@ -858,14 +809,12 @@ local function CreateESP(object, color, text, objectType)
             v:Destroy()
         end
     end
-
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "MV_ESP"
     billboard.Size = UDim2.new(0, 250, 0, 60)
     billboard.AlwaysOnTop = true
     billboard.Parent = object
     billboard.StudsOffset = Vector3.new(0, 3, 0)
-
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 0.5, 0)
     label.BackgroundTransparency = 1
@@ -875,7 +824,6 @@ local function CreateESP(object, color, text, objectType)
     label.Font = Enum.Font.GothamBold
     label.TextStrokeTransparency = 0.2
     label.Parent = billboard
-
     local distLabel = Instance.new("TextLabel")
     distLabel.Size = UDim2.new(1, 0, 0.5, 0)
     distLabel.Position = UDim2.new(0, 0, 0.5, 0)
@@ -886,7 +834,6 @@ local function CreateESP(object, color, text, objectType)
     distLabel.Font = Enum.Font.Gotham
     distLabel.TextStrokeTransparency = 0.2
     distLabel.Parent = billboard
-
     table.insert(ESPObjects, {
         Object = object,
         Billboard = billboard,
@@ -904,7 +851,6 @@ local function UpdateDistances()
             local root = char:FindFirstChild("HumanoidRootPart")
             if not root then continue end
             local myPos = root.Position
-
             for _, data in pairs(ESPObjects) do
                 if data.Object and data.Object.Parent then
                     local targetPos = data.Object.Position
@@ -946,7 +892,6 @@ local function ESPLoop()
                     table.remove(ESPObjects, i)
                 end
             end
-            
             if Toggles.ESPPlayers then
                 for _, player in pairs(Players:GetPlayers()) do
                     if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
@@ -961,7 +906,6 @@ local function ESPLoop()
                     end
                 end
             end
-
             if Toggles.ESPMobs then
                 for _, v in pairs(Workspace:GetDescendants()) do
                     if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
@@ -979,7 +923,6 @@ local function ESPLoop()
                     end
                 end
             end
-
             if Toggles.ESPFruits then
                 for _, v in pairs(Workspace:GetDescendants()) do
                     if v:IsA("Model") and v.Name:lower():find("fruit") then
@@ -1004,13 +947,11 @@ end
 local function UpdateTeleportBox()
     local teleportBox = CategoryBoxes["🚀 Teleport"]
     if not teleportBox then return end
-    
     for _, child in pairs(teleportBox:GetChildren()) do
         if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("ScrollingFrame") then
             child:Destroy()
         end
     end
-    
     local label = Instance.new("TextLabel")
     label.Parent = teleportBox
     label.Size = UDim2.new(1, 0, 0, 25)
@@ -1019,7 +960,6 @@ local function UpdateTeleportBox()
     label.TextColor3 = Color3.fromRGB(255, 255, 255)
     label.TextScaled = true
     label.Font = Enum.Font.GothamBold
-    
     local mapScroll = Instance.new("ScrollingFrame")
     mapScroll.Parent = teleportBox
     mapScroll.Size = UDim2.new(1, 0, 1, -30)
@@ -1029,12 +969,10 @@ local function UpdateTeleportBox()
     mapScroll.CanvasSize = UDim2.new(0, #DetectedMapPoints * 120, 0, 0)
     mapScroll.ScrollBarThickness = 4
     mapScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
-    
     local mapList = Instance.new("UIListLayout")
     mapList.Parent = mapScroll
     mapList.FillDirection = Enum.FillDirection.Horizontal
     mapList.Padding = UDim.new(0, 6)
-    
     for i, mapData in ipairs(DetectedMapPoints) do
         local btn = Instance.new("TextButton")
         btn.Parent = mapScroll
@@ -1045,11 +983,9 @@ local function UpdateTeleportBox()
         btn.TextScaled = true
         btn.Font = Enum.Font.Gotham
         btn.BorderSizePixel = 0
-        
         local corner = Instance.new("UICorner")
         corner.Parent = btn
         corner.CornerRadius = UDim.new(0, 4)
-        
         btn.MouseButton1Click:Connect(function()
             SelectedMapPoint = mapData.Position
             SelectedMapName = mapData.Name
@@ -1062,7 +998,6 @@ local function UpdateTeleportBox()
             btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
         end)
     end
-    
     local teleBtn = Instance.new("TextButton")
     teleBtn.Parent = teleportBox
     teleBtn.Size = UDim2.new(1, 0, 0, 35)
@@ -1073,7 +1008,6 @@ local function UpdateTeleportBox()
     teleBtn.TextScaled = true
     teleBtn.Font = Enum.Font.GothamBold
     teleBtn.BorderSizePixel = 0
-    
     teleBtn.MouseButton1Click:Connect(function()
         if SelectedMapPoint then
             local char = LocalPlayer.Character
@@ -1092,11 +1026,9 @@ local function CreateToggleButton(parent, label, key)
     frame.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
     frame.BackgroundTransparency = 0.3
     frame.BorderSizePixel = 0
-    
     local corner = Instance.new("UICorner")
     corner.Parent = frame
     corner.CornerRadius = UDim.new(0, 4)
-    
     local labelBtn = Instance.new("TextButton")
     labelBtn.Parent = frame
     labelBtn.Size = UDim2.new(0.6, 0, 1, 0)
@@ -1107,7 +1039,6 @@ local function CreateToggleButton(parent, label, key)
     labelBtn.TextXAlignment = Enum.TextXAlignment.Left
     labelBtn.Font = Enum.Font.Gotham
     labelBtn.BorderSizePixel = 0
-    
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Parent = frame
     toggleBtn.Size = UDim2.new(0.32, 0, 1, -4)
@@ -1118,11 +1049,9 @@ local function CreateToggleButton(parent, label, key)
     toggleBtn.TextScaled = true
     toggleBtn.Font = Enum.Font.GothamBold
     toggleBtn.BorderSizePixel = 0
-    
     local btnCorner = Instance.new("UICorner")
     btnCorner.Parent = toggleBtn
     btnCorner.CornerRadius = UDim.new(0, 4)
-    
     local function ToggleFunc()
         Toggles[key] = not Toggles[key]
         if Toggles[key] then
@@ -1133,10 +1062,8 @@ local function CreateToggleButton(parent, label, key)
             toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
         end
     end
-    
     toggleBtn.MouseButton1Click:Connect(ToggleFunc)
     labelBtn.MouseButton1Click:Connect(ToggleFunc)
-    
     return frame
 end
 
@@ -1148,11 +1075,9 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
     frame.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
     frame.BackgroundTransparency = 0.3
     frame.BorderSizePixel = 0
-    
     local corner = Instance.new("UICorner")
     corner.Parent = frame
     corner.CornerRadius = UDim.new(0, 4)
-    
     local labelBtn = Instance.new("TextLabel")
     labelBtn.Parent = frame
     labelBtn.Size = UDim2.new(0.4, 0, 1, 0)
@@ -1163,7 +1088,6 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
     labelBtn.TextXAlignment = Enum.TextXAlignment.Left
     labelBtn.Font = Enum.Font.Gotham
     labelBtn.BorderSizePixel = 0
-    
     local dropdownBtn = Instance.new("TextButton")
     dropdownBtn.Parent = frame
     dropdownBtn.Size = UDim2.new(0.5, 0, 1, -4)
@@ -1174,11 +1098,9 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
     dropdownBtn.TextScaled = true
     dropdownBtn.Font = Enum.Font.GothamBold
     dropdownBtn.BorderSizePixel = 0
-    
     local btnCorner = Instance.new("UICorner")
     btnCorner.Parent = dropdownBtn
     btnCorner.CornerRadius = UDim.new(0, 4)
-    
     local isOpen = false
     local optionFrame = Instance.new("Frame")
     optionFrame.Parent = frame
@@ -1189,11 +1111,9 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
     optionFrame.BorderSizePixel = 0
     optionFrame.Visible = false
     optionFrame.ZIndex = 10
-    
     local optCorner = Instance.new("UICorner")
     optCorner.Parent = optionFrame
     optCorner.CornerRadius = UDim.new(0, 4)
-    
     local yOff = 0
     for _, opt in ipairs(options) do
         local optBtn = Instance.new("TextButton")
@@ -1207,7 +1127,6 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
         optBtn.Font = Enum.Font.Gotham
         optBtn.BorderSizePixel = 0
         optBtn.ZIndex = 10
-        
         optBtn.MouseButton1Click:Connect(function()
             dropdownBtn.Text = opt
             optionFrame.Visible = false
@@ -1216,13 +1135,11 @@ local function CreateDropdown(parent, label, options, defaultOption, callback)
         end)
         yOff = yOff + 30
     end
-    
     dropdownBtn.MouseButton1Click:Connect(function()
         isOpen = not isOpen
         optionFrame.Visible = isOpen
         frame.Size = UDim2.new(1, -6, 0, isOpen and 34 + #options * 30 or 34)
     end)
-    
     return frame
 end
 
@@ -1235,11 +1152,9 @@ local function BuildCategories()
         box.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
         box.BackgroundTransparency = 0.2
         box.BorderSizePixel = 0
-        
         local corner = Instance.new("UICorner")
         corner.Parent = box
         corner.CornerRadius = UDim.new(0, 8)
-        
         local title = Instance.new("TextLabel")
         title.Parent = box
         title.Size = UDim2.new(1, 0, 0, 30)
@@ -1249,11 +1164,9 @@ local function BuildCategories()
         title.TextScaled = true
         title.Font = Enum.Font.GothamBold
         title.BorderSizePixel = 0
-        
         local titleCorner = Instance.new("UICorner")
         titleCorner.Parent = title
         titleCorner.CornerRadius = UDim.new(0, 8)
-        
         local content = Instance.new("ScrollingFrame")
         content.Parent = box
         content.Size = UDim2.new(1, -6, 1, -38)
@@ -1262,44 +1175,35 @@ local function BuildCategories()
         content.BorderSizePixel = 0
         content.CanvasSize = UDim2.new(0, 0, 0, 0)
         content.ScrollBarThickness = 3
-        
         local contentList = Instance.new("UIListLayout")
         contentList.Parent = content
         contentList.Padding = UDim.new(0, 4)
-        
         CategoryBoxes[catName] = content
     end
     
-    -- // === COMBAT BOX ===
+    -- Combat
     local combat = CategoryBoxes["⚔️ Combat"]
-    
     CreateToggleButton(combat, "🤖 Auto Farm", "AutoFarm")
     CreateToggleButton(combat, "📦 Gom Quái", "PullMobs")
-    
     CreateDropdown(combat, "⚔️ Vũ Khí", AutoFarmWeapons, "Melee", function(selected)
         AutoFarmWeapon = selected
         print("🔫 Đã chọn vũ khí: " .. selected)
     end)
-    
     CreateToggleButton(combat, "🌀 Auto Chiêu", "AutoSkill")
     CreateToggleButton(combat, "👤 ESP Players", "ESPPlayers")
     CreateToggleButton(combat, "👾 ESP Mobs", "ESPMobs")
     CreateToggleButton(combat, "🍎 ESP Fruits", "ESPFruits")
-    
-    -- Danh sách quái sẽ được tạo sau khi scan
     UpdateMobList()
     
-    -- // === MOVEMENT BOX ===
+    -- Movement
     local movement = CategoryBoxes["🦘 Movement"]
     CreateToggleButton(movement, "🦘 Super Jump", "SuperJump")
     CreateToggleButton(movement, "✈️ Fly (F)", "Fly")
     CreateToggleButton(movement, "👻 Noclip", "Noclip")
-    
     local speedFrame = Instance.new("Frame")
     speedFrame.Parent = movement
     speedFrame.Size = UDim2.new(1, 0, 0, 40)
     speedFrame.BackgroundTransparency = 1
-    
     local speedLabel = Instance.new("TextLabel")
     speedLabel.Parent = speedFrame
     speedLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
@@ -1309,7 +1213,6 @@ local function BuildCategories()
     speedLabel.TextScaled = true
     speedLabel.Font = Enum.Font.Gotham
     speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
     local speedUp = Instance.new("TextButton")
     speedUp.Parent = speedFrame
     speedUp.Size = UDim2.new(0.15, 0, 0.5, 0)
@@ -1323,7 +1226,6 @@ local function BuildCategories()
         FlySpeed = FlySpeed + 5
         speedLabel.Text = "Fly Speed: " .. FlySpeed
     end)
-    
     local speedDown = Instance.new("TextButton")
     speedDown.Parent = speedFrame
     speedDown.Size = UDim2.new(0.15, 0, 0.5, 0)
@@ -1337,12 +1239,10 @@ local function BuildCategories()
         FlySpeed = math.max(10, FlySpeed - 5)
         speedLabel.Text = "Fly Speed: " .. FlySpeed
     end)
-    
     local jumpFrame = Instance.new("Frame")
     jumpFrame.Parent = movement
     jumpFrame.Size = UDim2.new(1, 0, 0, 40)
     jumpFrame.BackgroundTransparency = 1
-    
     local jumpLabel = Instance.new("TextLabel")
     jumpLabel.Parent = jumpFrame
     jumpLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
@@ -1352,7 +1252,6 @@ local function BuildCategories()
     jumpLabel.TextScaled = true
     jumpLabel.Font = Enum.Font.Gotham
     jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
-    
     local jumpUp = Instance.new("TextButton")
     jumpUp.Parent = jumpFrame
     jumpUp.Size = UDim2.new(0.15, 0, 0.5, 0)
@@ -1366,7 +1265,6 @@ local function BuildCategories()
         JumpPower = JumpPower + 50
         jumpLabel.Text = "Jump Power: " .. JumpPower
     end)
-    
     local jumpDown = Instance.new("TextButton")
     jumpDown.Parent = jumpFrame
     jumpDown.Size = UDim2.new(0.15, 0, 0.5, 0)
@@ -1381,18 +1279,18 @@ local function BuildCategories()
         jumpLabel.Text = "Jump Power: " .. JumpPower
     end)
     
-    -- // === VISUAL BOX ===
+    -- Visual
     local visual = CategoryBoxes["👁️ Visual"]
     CreateToggleButton(visual, "🔧 Fix Lag", "FixLag")
     CreateToggleButton(visual, "👻 Ghost (F1)", "Ghost")
     CreateToggleButton(visual, "🌙 Night Vision (F2)", "NightVision")
     
-    -- // === TRACER BOX ===
+    -- Tracer
     local tracer = CategoryBoxes["📡 Tracer"]
     CreateToggleButton(tracer, "🔴 Tracer Players", "TracerPlayers")
     CreateToggleButton(tracer, "🟡 Tracer Mobs", "TracerMobs")
     
-    -- // === TELEPORT BOX ===
+    -- Teleport
     UpdateTeleportBox()
 end
 
@@ -1535,7 +1433,7 @@ local function CreateUI()
     Title.Parent = MainFrame
     Title.Size = UDim2.new(1, 0, 0, 35)
     Title.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
-    Title.Text = "⚡ MV HACK v6.3 - Auto Farm Select"
+    Title.Text = "⚡ MV HACK v6.4 - Fixed Icon"
     Title.TextColor3 = Color3.fromRGB(255, 255, 255)
     Title.TextScaled = true
     Title.Font = Enum.Font.GothamBold
@@ -1596,12 +1494,13 @@ local function CreateUI()
     ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
     ToggleBtn.Position = UDim2.new(0, 15, 0.5, -30)
     ToggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-    ToggleBtn.Text = "ShinnDev"
+    ToggleBtn.Text = "MV"
     ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     ToggleBtn.TextScaled = true
     ToggleBtn.Font = Enum.Font.GothamBold
     ToggleBtn.BorderSizePixel = 0
     ToggleBtn.BackgroundTransparency = 0.2
+    ToggleBtn.ZIndex = 999
 
     local glow = Instance.new("UICorner")
     glow.Parent = ToggleBtn
@@ -1642,4 +1541,4 @@ GhostMode()
 NightVision()
 AntiIdle()
 
-print("⚡ MV HACK v6.3 LOADED - Auto Farm Select + Full Mob List + Level Display - Boss man, fuck yeah!")
+print("⚡ MV HACK v6.4 LOADED - Icon Click + Drag Fixed - Boss man, fuck yeah!")
