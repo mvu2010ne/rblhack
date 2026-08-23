@@ -1,5 +1,5 @@
--- MV Hub | Axiom Build v6.4
--- FIX: Click icon mở menu, kéo icon di chuyển được
+-- MV Hub | Axiom Build v5.0 - Ultimate Edition
+-- Tất cả tính năng được tối ưu và hoạt động ổn định
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,40 +7,32 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local Workspace = game:GetService("Workspace")
+local VirtualUser = game:GetService("VirtualUser")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
 
--- // UI Variables
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local Title = Instance.new("TextLabel")
-local CloseBtn = Instance.new("TextButton")
-local ToggleBtn = Instance.new("TextButton")
-local ResizeHandle = Instance.new("Frame")
-local ResizeCorner = Instance.new("ImageLabel")
-
--- // Category Scroll
-local CategoryScroll = Instance.new("ScrollingFrame")
-local CategoryList = Instance.new("UIListLayout")
-local CategoryBoxes = {}
-local CategoryNames = {"⚔️ Combat", "🦘 Movement", "👁️ Visual", "📡 Tracer", "🚀 Teleport"}
-
--- // Resize Variables
-local MinSize = 550
-local MaxSize = 950
+-- // Biến toàn cục
+local MenuOpen = false
+local SelectedMapPoint = nil
+local SelectedMapName = "Chưa chọn"
+local DetectedMapPoints = {}
+local ESPObjects = {}
+local MobsList = {}
+local SelectedMob = nil
+local SelectedWeapon = nil
+local IsAutoFarm = false
+local FarmTarget = nil
+local FarmLoop = nil
 local IsResizing = false
-local ResizeStartPos
-local ResizeStartSize
+local ResizeStartPos = nil
+local ResizeStartSize = nil
+local MinSize = 600
+local MaxSize = 900
 
--- // Icon Drag Variables
-local IsDraggingIcon = false
-local IsClickingIcon = false
-local DragStartPos = nil
-local IconStartPos = nil
-local DragThreshold = 10
-
--- // Toggle States
+-- // Toggles
 local Toggles = {
     FixLag = false,
     SuperJump = false,
@@ -51,772 +43,1105 @@ local Toggles = {
     ESPFruits = false,
     Ghost = false,
     NightVision = false,
-    TracerPlayers = false,
-    TracerMobs = false,
-    AutoFarm = false,
-    AutoSkill = false,
-    PullMobs = false
+    AutoFarm = false
 }
 
--- // Auto Farm Variables
-local SelectedMob = nil
-local SelectedMobName = "Chưa chọn"
-local SelectedMobPosition = nil
-local AutoFarmWeapon = "Melee"
-local AutoFarmWeapons = {"Melee", "Sword", "Gun", "Fruit"}
-local AutoFarmAttackCooldown = 0
-local AutoFarmSkillCooldown = 0
-local AllMobs = {}
-local MobButtons = {}
-
--- // Fly Variables
+-- // Variables
 local FlySpeed = 50
 local JumpPower = 250
 local GhostStealth = 0.3
-local flyEnabled = false
-local flyBodyPosition = nil
-local flyBodyGyro = nil
-
--- // Menu State
-local MenuOpen = false
-
--- // Teleport Variables
-local SelectedMapPoint = nil
-local SelectedMapName = "Chưa chọn"
-local DetectedMapPoints = {}
-
--- // ESP & Tracer
-local ESPObjects = {}
+local FlyEnabled = false
+local BodyVelocity = nil
 local ESPUpdateRate = 0.3
-local TracerLines = {}
-local TracerUpdateRate = 0.1
 
--- // ============ GET ALL MOBS ============
-local function GetAllMobs()
-    local mobs = {}
+-- ============================================
+-- // PHẦN 1: TẠO UI THEO DẠNG HỘP NGANG
+-- ============================================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MVHub"
+ScreenGui.Parent = LocalPlayer.PlayerGui
+ScreenGui.ResetOnSpawn = false
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Parent = ScreenGui
+MainFrame.Size = UDim2.new(0, 800, 0, 550)
+MainFrame.Position = UDim2.new(0.5, -400, 0.5, -275)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 25)
+MainFrame.BackgroundTransparency = 0.05
+MainFrame.Visible = false
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.BorderSizePixel = 0
+
+-- Blur effect
+local blur = Instance.new("BlurEffect")
+blur.Parent = MainFrame
+blur.Size = 8
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Parent = MainFrame
+Header.Size = UDim2.new(1, 0, 0, 45)
+Header.BackgroundColor3 = Color3.fromRGB(25, 25, 55)
+Header.BorderSizePixel = 0
+
+local Title = Instance.new("TextLabel")
+Title.Parent = Header
+Title.Size = UDim2.new(0.8, 0, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "⚡ MV HUB v5.0 - Axiom"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextScaled = true
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Parent = Header
+CloseBtn.Size = UDim2.new(0, 35, 0, 35)
+CloseBtn.Position = UDim2.new(1, -42, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextScaled = true
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.BorderSizePixel = 0
+CloseBtn.BackgroundTransparency = 0.3
+CloseBtn.MouseButton1Click:Connect(function()
+    MenuOpen = false
+    MainFrame.Visible = false
+end)
+
+-- Resize Handle
+local ResizeHandle = Instance.new("Frame")
+ResizeHandle.Parent = MainFrame
+ResizeHandle.Size = UDim2.new(0, 25, 0, 25)
+ResizeHandle.Position = UDim2.new(1, -25, 1, -25)
+ResizeHandle.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+ResizeHandle.BackgroundTransparency = 0.5
+ResizeHandle.ZIndex = 10
+
+local ResizeCorner = Instance.new("ImageLabel")
+ResizeCorner.Parent = ResizeHandle
+ResizeCorner.Size = UDim2.new(1, 0, 1, 0)
+ResizeCorner.BackgroundTransparency = 1
+ResizeCorner.Image = "rbxassetid://6023420974"
+ResizeCorner.ImageColor3 = Color3.fromRGB(200, 200, 255)
+
+ResizeHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsResizing = true
+        ResizeStartPos = input.Position
+        ResizeStartSize = MainFrame.Size
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if IsResizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - ResizeStartPos
+        local newWidth = math.clamp(ResizeStartSize.X.Offset + delta.X, MinSize, MaxSize)
+        local newHeight = math.clamp(ResizeStartSize.Y.Offset + delta.Y, MinSize, MaxSize)
+        MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        IsResizing = false
+    end
+end)
+
+-- Menu Toggle Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
+ToggleBtn.Position = UDim2.new(0, 10, 0.5, -30)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+ToggleBtn.Text = "⚡"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextScaled = true
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.BackgroundTransparency = 0.2
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.Parent = ToggleBtn
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    MenuOpen = not MenuOpen
+    MainFrame.Visible = MenuOpen
+    if MenuOpen then
+        BuildTeleportList()
+        ScanMobs()
+    end
+    TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
+    wait(0.1)
+    TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
+end)
+
+-- Tab Buttons
+local TabContainer = Instance.new("Frame")
+TabContainer.Parent = MainFrame
+TabContainer.Size = UDim2.new(1, 0, 0, 40)
+TabContainer.Position = UDim2.new(0, 0, 0, 45)
+TabContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 38)
+TabContainer.BorderSizePixel = 0
+
+local Tabs = {}
+local TabContents = {}
+local CurrentTab = "Combat"
+
+local function CreateTab(name, icon)
+    local btn = Instance.new("TextButton")
+    btn.Parent = TabContainer
+    btn.Size = UDim2.new(0.166, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = icon .. " " .. name
+    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.Gotham
+    btn.BorderSizePixel = 0
+    btn.Name = name
+    
+    local content = Instance.new("ScrollingFrame")
+    content.Parent = MainFrame
+    content.Size = UDim2.new(1, -10, 1, -95)
+    content.Position = UDim2.new(0, 5, 0, 85)
+    content.BackgroundTransparency = 1
+    content.BorderSizePixel = 0
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.ScrollBarThickness = 4
+    content.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
+    content.Visible = false
+    content.Name = name .. "Content"
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = content
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 5)
+    
+    Tabs[name] = btn
+    TabContents[name] = content
+    
+    btn.MouseButton1Click:Connect(function()
+        for _, tab in pairs(Tabs) do
+            tab.BackgroundTransparency = 1
+            tab.TextColor3 = Color3.fromRGB(180, 180, 200)
+        end
+        for _, tabContent in pairs(TabContents) do
+            tabContent.Visible = false
+        end
+        btn.BackgroundTransparency = 0.3
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        content.Visible = true
+        CurrentTab = name
+        UpdateAllCanvas()
+    end)
+    
+    return btn, content
+end
+
+-- Tạo các tab
+local CombatTab, CombatContent = CreateTab("Combat", "⚔️")
+local MovementTab, MovementContent = CreateTab("Movement", "🏃")
+local ESPTab, ESPContent = CreateTab("ESP", "👁️")
+local TeleportTab, TeleportContent = CreateTab("Teleport", "🚀")
+local SettingsTab, SettingsContent = CreateTab("Settings", "⚙️")
+
+-- Mặc định mở tab Combat
+Tabs["Combat"]:BackgroundTransparency = 0.3
+Tabs["Combat"]:TextColor3 = Color3.fromRGB(255, 255, 255)
+CombatContent.Visible = true
+
+-- ============================================
+-- // PHẦN 2: HÀM TẠO NÚT BẬT TẮT
+-- ============================================
+
+local function CreateToggle(parent, label, key, callback)
+    local frame = Instance.new("Frame")
+    frame.Parent = parent
+    frame.Size = UDim2.new(0.9, 0, 0, 40)
+    frame.BackgroundColor3 = Color3.fromRGB(28, 28, 52)
+    frame.BorderSizePixel = 0
+    
+    local corner = Instance.new("UICorner")
+    corner.Parent = frame
+    corner.CornerRadius = UDim.new(0, 6)
+    
+    local text = Instance.new("TextLabel")
+    text.Parent = frame
+    text.Size = UDim2.new(0.6, 0, 1, 0)
+    text.Position = UDim2.new(0, 10, 0, 0)
+    text.BackgroundTransparency = 1
+    text.Text = label
+    text.TextColor3 = Color3.fromRGB(220, 220, 220)
+    text.TextScaled = true
+    text.Font = Enum.Font.Gotham
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local btn = Instance.new("TextButton")
+    btn.Parent = frame
+    btn.Size = UDim2.new(0.25, 0, 0.7, 0)
+    btn.Position = UDim2.new(0.7, 0, 0.15, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+    btn.Text = "OFF"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextScaled = true
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.Parent = btn
+    btnCorner.CornerRadius = UDim.new(0, 4)
+    
+    btn.MouseButton1Click:Connect(function()
+        Toggles[key] = not Toggles[key]
+        btn.Text = Toggles[key] and "ON" or "OFF"
+        btn.BackgroundColor3 = Toggles[key] and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(60, 60, 90)
+        if callback then callback(Toggles[key]) end
+        UpdateAllCanvas()
+    end)
+    
+    return frame
+end
+
+-- ============================================
+-- // PHẦN 3: BUILD TAB CONTENT
+-- ============================================
+
+-- // COMBAT TAB
+local function BuildCombatTab()
+    -- Auto Farm
+    local farmFrame = Instance.new("Frame")
+    farmFrame.Parent = CombatContent
+    farmFrame.Size = UDim2.new(0.9, 0, 0, 50)
+    farmFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+    farmFrame.BorderSizePixel = 0
+    
+    local farmCorner = Instance.new("UICorner")
+    farmCorner.Parent = farmFrame
+    farmCorner.CornerRadius = UDim.new(0, 6)
+    
+    local farmLabel = Instance.new("TextLabel")
+    farmLabel.Parent = farmFrame
+    farmLabel.Size = UDim2.new(0.4, 0, 1, 0)
+    farmLabel.Position = UDim2.new(0, 10, 0, 0)
+    farmLabel.BackgroundTransparency = 1
+    farmLabel.Text = "🤖 Auto Farm"
+    farmLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+    farmLabel.TextScaled = true
+    farmLabel.Font = Enum.Font.GothamBold
+    farmLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local farmBtn = Instance.new("TextButton")
+    farmBtn.Parent = farmFrame
+    farmBtn.Size = UDim2.new(0.2, 0, 0.7, 0)
+    farmBtn.Position = UDim2.new(0.45, 0, 0.15, 0)
+    farmBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 90)
+    farmBtn.Text = "START"
+    farmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    farmBtn.TextScaled = true
+    farmBtn.Font = Enum.Font.GothamBold
+    farmBtn.BorderSizePixel = 0
+    
+    local farmCorner2 = Instance.new("UICorner")
+    farmCorner2.Parent = farmBtn
+    farmCorner2.CornerRadius = UDim.new(0, 4)
+    
+    farmBtn.MouseButton1Click:Connect(function()
+        IsAutoFarm = not IsAutoFarm
+        farmBtn.Text = IsAutoFarm and "STOP" or "START"
+        farmBtn.BackgroundColor3 = IsAutoFarm and Color3.fromRGB(180, 0, 0) or Color3.fromRGB(60, 60, 90)
+        if IsAutoFarm then
+            StartAutoFarm()
+        else
+            StopAutoFarm()
+        end
+    end)
+    
+    -- Chọn quái
+    local mobLabel = Instance.new("TextLabel")
+    mobLabel.Parent = CombatContent
+    mobLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    mobLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+    mobLabel.Text = "🎯 Chọn Quái: " .. (SelectedMob or "Chưa chọn")
+    mobLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    mobLabel.TextScaled = true
+    mobLabel.Font = Enum.Font.Gotham
+    mobLabel.BorderSizePixel = 0
+    mobLabel.Name = "MobLabel"
+    
+    local refreshMobs = Instance.new("TextButton")
+    refreshMobs.Parent = CombatContent
+    refreshMobs.Size = UDim2.new(0.2, 0, 0, 30)
+    refreshMobs.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
+    refreshMobs.Text = "🔄 Quét"
+    refreshMobs.TextColor3 = Color3.fromRGB(255, 255, 255)
+    refreshMobs.TextScaled = true
+    refreshMobs.Font = Enum.Font.GothamBold
+    refreshMobs.BorderSizePixel = 0
+    
+    local mobCorner = Instance.new("UICorner")
+    mobCorner.Parent = refreshMobs
+    mobCorner.CornerRadius = UDim.new(0, 4)
+    
+    refreshMobs.MouseButton1Click:Connect(function()
+        ScanMobs()
+    end)
+    
+    -- Danh sách quái
+    local mobListFrame = Instance.new("ScrollingFrame")
+    mobListFrame.Parent = CombatContent
+    mobListFrame.Size = UDim2.new(0.9, 0, 0, 100)
+    mobListFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 38)
+    mobListFrame.BorderSizePixel = 0
+    mobListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    mobListFrame.ScrollBarThickness = 4
+    mobListFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
+    mobListFrame.Name = "MobList"
+    
+    local mobListLayout = Instance.new("UIListLayout")
+    mobListLayout.Parent = mobListFrame
+    mobListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    mobListLayout.Padding = UDim.new(0, 2)
+    
+    -- Chọn vũ khí
+    local weaponLabel = Instance.new("TextLabel")
+    weaponLabel.Parent = CombatContent
+    weaponLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    weaponLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+    weaponLabel.Text = "🗡️ Vũ Khí: " .. (SelectedWeapon or "Tay không")
+    weaponLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    weaponLabel.TextScaled = true
+    weaponLabel.Font = Enum.Font.Gotham
+    weaponLabel.BorderSizePixel = 0
+    weaponLabel.Name = "WeaponLabel"
+    
+    local weapons = {"Tay không", "Kiếm", "Súng", "Gậy", "Rìu", "Dao"}
+    local weaponButtons = {}
+    
+    for i, w in ipairs(weapons) do
+        local btn = Instance.new("TextButton")
+        btn.Parent = CombatContent
+        btn.Size = UDim2.new(0.14, 0, 0, 30)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+        btn.Text = w
+        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.Gotham
+        btn.BorderSizePixel = 0
+        btn.BackgroundTransparency = 0.2
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.Parent = btn
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        
+        btn.MouseButton1Click:Connect(function()
+            SelectedWeapon = w
+            weaponLabel.Text = "🗡️ Vũ Khí: " .. w
+            for _, b in pairs(weaponButtons) do
+                b.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+                b.BackgroundTransparency = 0.2
+            end
+            btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+            btn.BackgroundTransparency = 0
+        end)
+        
+        table.insert(weaponButtons, btn)
+    end
+    
+    -- Lưu references để cập nhật
+    CombatContent.MobLabel = mobLabel
+    CombatContent.WeaponLabel = weaponLabel
+    CombatContent.MobListFrame = mobListFrame
+    CombatContent.FarmBtn = farmBtn
+end
+
+-- // MOVEMENT TAB
+local function BuildMovementTab()
+    -- Fly Toggle
+    CreateToggle(MovementContent, "✈️ Fly (F)", "Fly", function(val)
+        if not val then
+            if BodyVelocity then BodyVelocity:Destroy() end
+            BodyVelocity = nil
+            FlyEnabled = false
+        end
+    end)
+    
+    CreateToggle(MovementContent, "🦘 Super Jump", "SuperJump")
+    CreateToggle(MovementContent, "👻 Noclip", "Noclip")
+    CreateToggle(MovementContent, "👻 Ghost (F1)", "Ghost")
+    
+    -- Fly Speed Slider
+    local speedFrame = Instance.new("Frame")
+    speedFrame.Parent = MovementContent
+    speedFrame.Size = UDim2.new(0.9, 0, 0, 45)
+    speedFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+    speedFrame.BorderSizePixel = 0
+    
+    local speedCorner = Instance.new("UICorner")
+    speedCorner.Parent = speedFrame
+    speedCorner.CornerRadius = UDim.new(0, 6)
+    
+    local speedLabel = Instance.new("TextLabel")
+    speedLabel.Parent = speedFrame
+    speedLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    speedLabel.Position = UDim2.new(0, 10, 0, 0)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Text = "Fly Speed: " .. FlySpeed
+    speedLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    speedLabel.TextScaled = true
+    speedLabel.Font = Enum.Font.Gotham
+    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local speedUp = Instance.new("TextButton")
+    speedUp.Parent = speedFrame
+    speedUp.Size = UDim2.new(0.1, 0, 0.7, 0)
+    speedUp.Position = UDim2.new(0.55, 0, 0.15, 0)
+    speedUp.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+    speedUp.Text = "+"
+    speedUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedUp.TextScaled = true
+    speedUp.Font = Enum.Font.GothamBold
+    speedUp.BorderSizePixel = 0
+    
+    local speedUpCorner = Instance.new("UICorner")
+    speedUpCorner.Parent = speedUp
+    speedUpCorner.CornerRadius = UDim.new(0, 4)
+    
+    speedUp.MouseButton1Click:Connect(function()
+        FlySpeed = math.min(200, FlySpeed + 5)
+        speedLabel.Text = "Fly Speed: " .. FlySpeed
+    end)
+    
+    local speedDown = Instance.new("TextButton")
+    speedDown.Parent = speedFrame
+    speedDown.Size = UDim2.new(0.1, 0, 0.7, 0)
+    speedDown.Position = UDim2.new(0.7, 0, 0.15, 0)
+    speedDown.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    speedDown.Text = "-"
+    speedDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedDown.TextScaled = true
+    speedDown.Font = Enum.Font.GothamBold
+    speedDown.BorderSizePixel = 0
+    
+    local speedDownCorner = Instance.new("UICorner")
+    speedDownCorner.Parent = speedDown
+    speedDownCorner.CornerRadius = UDim.new(0, 4)
+    
+    speedDown.MouseButton1Click:Connect(function()
+        FlySpeed = math.max(10, FlySpeed - 5)
+        speedLabel.Text = "Fly Speed: " .. FlySpeed
+    end)
+    
+    -- Jump Power Slider
+    local jumpFrame = Instance.new("Frame")
+    jumpFrame.Parent = MovementContent
+    jumpFrame.Size = UDim2.new(0.9, 0, 0, 45)
+    jumpFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
+    jumpFrame.BorderSizePixel = 0
+    
+    local jumpCorner = Instance.new("UICorner")
+    jumpCorner.Parent = jumpFrame
+    jumpCorner.CornerRadius = UDim.new(0, 6)
+    
+    local jumpLabel = Instance.new("TextLabel")
+    jumpLabel.Parent = jumpFrame
+    jumpLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    jumpLabel.Position = UDim2.new(0, 10, 0, 0)
+    jumpLabel.BackgroundTransparency = 1
+    jumpLabel.Text = "Jump Power: " .. JumpPower
+    jumpLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
+    jumpLabel.TextScaled = true
+    jumpLabel.Font = Enum.Font.Gotham
+    jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local jumpUp = Instance.new("TextButton")
+    jumpUp.Parent = jumpFrame
+    jumpUp.Size = UDim2.new(0.1, 0, 0.7, 0)
+    jumpUp.Position = UDim2.new(0.55, 0, 0.15, 0)
+    jumpUp.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+    jumpUp.Text = "+"
+    jumpUp.TextColor3 = Color3.fromRGB(255, 255, 255)
+    jumpUp.TextScaled = true
+    jumpUp.Font = Enum.Font.GothamBold
+    jumpUp.BorderSizePixel = 0
+    
+    local jumpUpCorner = Instance.new("UICorner")
+    jumpUpCorner.Parent = jumpUp
+    jumpUpCorner.CornerRadius = UDim.new(0, 4)
+    
+    jumpUp.MouseButton1Click:Connect(function()
+        JumpPower = math.min(800, JumpPower + 50)
+        jumpLabel.Text = "Jump Power: " .. JumpPower
+    end)
+    
+    local jumpDown = Instance.new("TextButton")
+    jumpDown.Parent = jumpFrame
+    jumpDown.Size = UDim2.new(0.1, 0, 0.7, 0)
+    jumpDown.Position = UDim2.new(0.7, 0, 0.15, 0)
+    jumpDown.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    jumpDown.Text = "-"
+    jumpDown.TextColor3 = Color3.fromRGB(255, 255, 255)
+    jumpDown.TextScaled = true
+    jumpDown.Font = Enum.Font.GothamBold
+    jumpDown.BorderSizePixel = 0
+    
+    local jumpDownCorner = Instance.new("UICorner")
+    jumpDownCorner.Parent = jumpDown
+    jumpDownCorner.CornerRadius = UDim.new(0, 4)
+    
+    jumpDown.MouseButton1Click:Connect(function()
+        JumpPower = math.max(50, JumpPower - 50)
+        jumpLabel.Text = "Jump Power: " .. JumpPower
+    end)
+end
+
+-- // ESP TAB
+local function BuildESPTab()
+    CreateToggle(ESPTab, "👤 ESP Players", "ESPPlayers")
+    CreateToggle(ESPTab, "👾 ESP Mobs", "ESPMobs")
+    CreateToggle(ESPTab, "🍎 ESP Fruits", "ESPFruits")
+    CreateToggle(ESPTab, "🌙 Night Vision (F2)", "NightVision")
+    CreateToggle(ESPTab, "🔧 Fix Lag", "FixLag")
+end
+
+-- // TELEPORT TAB
+local function BuildTeleportTab()
+    -- Scan button
+    local scanBtn = Instance.new("TextButton")
+    scanBtn.Parent = TeleportContent
+    scanBtn.Size = UDim2.new(0.4, 0, 0, 35)
+    scanBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 200)
+    scanBtn.Text = "🔍 Quét Map"
+    scanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    scanBtn.TextScaled = true
+    scanBtn.Font = Enum.Font.GothamBold
+    scanBtn.BorderSizePixel = 0
+    
+    local scanCorner = Instance.new("UICorner")
+    scanCorner.Parent = scanBtn
+    scanCorner.CornerRadius = UDim.new(0, 6)
+    
+    scanBtn.MouseButton1Click:Connect(function()
+        BuildTeleportList()
+    end)
+    
+    -- Selected location
+    local locLabel = Instance.new("TextLabel")
+    locLabel.Parent = TeleportContent
+    locLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    locLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+    locLabel.Text = "📍 " .. SelectedMapName
+    locLabel.TextColor3 = Color3.fromRGB(255, 200, 50)
+    locLabel.TextScaled = true
+    locLabel.Font = Enum.Font.GothamBold
+    locLabel.BorderSizePixel = 0
+    locLabel.Name = "LocLabel"
+    
+    -- Teleport button
+    local teleBtn = Instance.new("TextButton")
+    teleBtn.Parent = TeleportContent
+    teleBtn.Size = UDim2.new(0.3, 0, 0, 35)
+    teleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+    teleBtn.Text = "🚀 Dịch Chuyển"
+    teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teleBtn.TextScaled = true
+    teleBtn.Font = Enum.Font.GothamBold
+    teleBtn.BorderSizePixel = 0
+    
+    local teleCorner = Instance.new("UICorner")
+    teleCorner.Parent = teleBtn
+    teleCorner.CornerRadius = UDim.new(0, 6)
+    
+    teleBtn.MouseButton1Click:Connect(function()
+        if SelectedMapPoint then
+            TeleportTo(SelectedMapPoint)
+        else
+            print("⚠️ Chưa chọn điểm dịch chuyển!")
+        end
+    end)
+    
+    -- Clear button
+    local clearBtn = Instance.new("TextButton")
+    clearBtn.Parent = TeleportContent
+    clearBtn.Size = UDim2.new(0.2, 0, 0, 35)
+    clearBtn.Position = UDim2.new(0.35, 0, 0, 0)
+    clearBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50)
+    clearBtn.Text = "🧹 Bỏ chọn"
+    clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    clearBtn.TextScaled = true
+    clearBtn.Font = Enum.Font.GothamBold
+    clearBtn.BorderSizePixel = 0
+    
+    local clearCorner = Instance.new("UICorner")
+    clearCorner.Parent = clearBtn
+    clearCorner.CornerRadius = UDim.new(0, 6)
+    
+    clearBtn.MouseButton1Click:Connect(function()
+        SelectedMapPoint = nil
+        SelectedMapName = "Chưa chọn"
+        locLabel.Text = "📍 Chưa chọn"
+    end)
+    
+    -- List of locations
+    local locListFrame = Instance.new("ScrollingFrame")
+    locListFrame.Parent = TeleportContent
+    locListFrame.Size = UDim2.new(0.9, 0, 0, 200)
+    locListFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 38)
+    locListFrame.BorderSizePixel = 0
+    locListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    locListFrame.ScrollBarThickness = 4
+    locListFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
+    locListFrame.Name = "LocList"
+    
+    local locListLayout = Instance.new("UIListLayout")
+    locListLayout.Parent = locListFrame
+    locListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    locListLayout.Padding = UDim.new(0, 2)
+    
+    TeleportContent.LocLabel = locLabel
+    TeleportContent.LocList = locListFrame
+end
+
+-- // SETTINGS TAB
+local function BuildSettingsTab()
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Parent = SettingsContent
+    infoLabel.Size = UDim2.new(0.9, 0, 0, 80)
+    infoLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 45)
+    infoLabel.Text = "⚡ MV HUB v5.0\nBy Axiom\nHotkeys: M - Menu | F - Fly | F1 - Ghost | F2 - Night Vision"
+    infoLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    infoLabel.TextScaled = true
+    infoLabel.Font = Enum.Font.Gotham
+    infoLabel.BorderSizePixel = 0
+    
+    local creditLabel = Instance.new("TextLabel")
+    creditLabel.Parent = SettingsContent
+    creditLabel.Size = UDim2.new(0.9, 0, 0, 40)
+    creditLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
+    creditLabel.Text = "📌 ESP hiển thị khoảng cách (mét)\n✅ Auto Farm tự động tấn công quái gần nhất"
+    creditLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+    creditLabel.TextScaled = true
+    creditLabel.Font = Enum.Font.Gotham
+    creditLabel.BorderSizePixel = 0
+end
+
+-- ============================================
+-- // PHẦN 4: CẬP NHẬT CANVAS
+-- ============================================
+
+local function UpdateAllCanvas()
+    for name, content in pairs(TabContents) do
+        if content and content:IsA("ScrollingFrame") then
+            local size = 10
+            for _, child in pairs(content:GetChildren()) do
+                if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("ScrollingFrame") then
+                    if child.Name ~= "MobList" and child.Name ~= "LocList" then
+                        size = size + child.Size.Y.Offset + 6
+                    end
+                end
+            end
+            -- Thêm space cho các list
+            local mobList = content:FindFirstChild("MobList")
+            if mobList then
+                size = size + 110
+            end
+            local locList = content:FindFirstChild("LocList")
+            if locList then
+                size = size + 210
+            end
+            content.CanvasSize = UDim2.new(0, 0, 0, size + 30)
+        end
+    end
+end
+
+-- ============================================
+-- // PHẦN 5: CHỨC NĂNG CHÍNH
+-- ============================================
+
+-- // SCAN MOBS
+function ScanMobs()
+    MobsList = {}
+    local mobList = CombatContent:FindFirstChild("MobList")
+    if not mobList then return end
+    
+    -- Clear existing buttons
+    for _, child in pairs(mobList:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    -- Scan for mobs
     for _, v in pairs(Workspace:GetDescendants()) do
         if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
             local name = v.Name:lower()
-            if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
-                local humanoid = v:FindFirstChild("Humanoid")
-                if humanoid and humanoid.Health > 0 then
-                    local root = v:FindFirstChild("HumanoidRootPart")
-                    if root then
-                        local level = 0
-                        local mobName = v.Name
-                        local levelMatch = string.match(mobName, "Lv%.?(%d+)") or string.match(mobName, "Level (%d+)") or string.match(mobName, "(%d+)")
-                        if levelMatch then
-                            level = tonumber(levelMatch) or 0
-                        end
-                        local levelAttr = v:FindFirstChild("Level")
-                        if levelAttr then level = levelAttr.Value end
-                        if level == 0 and humanoid.DisplayName then
-                            local dnMatch = string.match(humanoid.DisplayName, "(%d+)")
-                            if dnMatch then level = tonumber(dnMatch) or 0 end
-                        end
-                        table.insert(mobs, {
-                            Model = v,
-                            Name = v.Name,
-                            Root = root,
-                            Humanoid = humanoid,
-                            Position = root.Position,
-                            Level = level,
-                            Health = humanoid.Health,
-                            MaxHealth = humanoid.MaxHealth
-                        })
+            local isMob = name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or 
+                         name:find("zombie") or name:find("skeleton") or name:find("spider") or name:find("wolf") or
+                         name:find("monster") or name:find("creature") or name:find("golem") or name:find("demon")
+            
+            if isMob then
+                local lvl = "?"
+                if v:FindFirstChild("Level") then
+                    lvl = v.Level.Value
+                elseif v:FindFirstChild("LevelValue") then
+                    lvl = v.LevelValue.Value
+                end
+                table.insert(MobsList, {
+                    Model = v,
+                    Name = v.Name,
+                    Level = lvl,
+                    Root = v.HumanoidRootPart,
+                    Humanoid = v.Humanoid
+                })
+            end
+        end
+    end
+    
+    -- Fallback: lấy tất cả model có humanoid nhưng không phải player
+    if #MobsList == 0 then
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+                if not Players:GetPlayerFromCharacter(v) then
+                    local lvl = "?"
+                    if v:FindFirstChild("Level") then
+                        lvl = v.Level.Value
+                    elseif v:FindFirstChild("LevelValue") then
+                        lvl = v.LevelValue.Value
                     end
+                    table.insert(MobsList, {
+                        Model = v,
+                        Name = v.Name,
+                        Level = lvl,
+                        Root = v.HumanoidRootPart,
+                        Humanoid = v.Humanoid
+                    })
                 end
             end
         end
     end
-    table.sort(mobs, function(a, b) return a.Level < b.Level end)
-    return mobs
-end
-
--- // ============ UPDATE MOB LIST ============
-local function UpdateMobList()
-    local combat = CategoryBoxes["⚔️ Combat"]
-    if not combat then return end
     
-    local toRemove = {}
-    for _, child in pairs(combat:GetChildren()) do
-        if child:IsA("ScrollingFrame") and child.Name == "MobList" then
-            table.insert(toRemove, child)
-        end
-        if child:IsA("TextButton") and child.Name == "RefreshMobs" then
-            table.insert(toRemove, child)
-        end
-    end
-    for _, child in pairs(toRemove) do
-        child:Destroy()
-    end
-    MobButtons = {}
-    
-    AllMobs = GetAllMobs()
-    
-    local mobScroll = Instance.new("ScrollingFrame")
-    mobScroll.Name = "MobList"
-    mobScroll.Parent = combat
-    mobScroll.Size = UDim2.new(1, -6, 0, 120)
-    mobScroll.Position = UDim2.new(0, 3, 0, 180)
-    mobScroll.BackgroundColor3 = Color3.fromRGB(15, 15, 35)
-    mobScroll.BackgroundTransparency = 0.3
-    mobScroll.BorderSizePixel = 0
-    mobScroll.CanvasSize = UDim2.new(0, 0, 0, #AllMobs * 32 + 10)
-    mobScroll.ScrollBarThickness = 4
-    mobScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
-    
-    local corner = Instance.new("UICorner")
-    corner.Parent = mobScroll
-    corner.CornerRadius = UDim.new(0, 4)
-    
-    local label = Instance.new("TextLabel")
-    label.Parent = mobScroll
-    label.Size = UDim2.new(1, 0, 0, 22)
-    label.BackgroundTransparency = 1
-    label.Text = "📋 DANH SÁCH QUÁI (" .. #AllMobs .. " con)"
-    label.TextColor3 = Color3.fromRGB(255, 200, 50)
-    label.TextScaled = true
-    label.Font = Enum.Font.GothamBold
-    
-    local yOff = 26
-    for i, mob in ipairs(AllMobs) do
+    -- Create buttons
+    for i, mobData in ipairs(MobsList) do
         local btn = Instance.new("TextButton")
-        btn.Parent = mobScroll
+        btn.Parent = mobList
         btn.Size = UDim2.new(1, -4, 0, 28)
-        btn.Position = UDim2.new(0, 2, 0, yOff)
         btn.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
-        btn.BackgroundTransparency = 0.2
-        btn.Text = "⚔️ " .. mob.Name .. " | Lv." .. mob.Level .. " | HP: " .. math.floor(mob.Health) .. "/" .. math.floor(mob.MaxHealth)
+        btn.Text = "👾 " .. mobData.Name .. " (Lv." .. mobData.Level .. ")"
         btn.TextColor3 = Color3.fromRGB(200, 200, 200)
         btn.TextScaled = true
-        btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Font = Enum.Font.Gotham
         btn.BorderSizePixel = 0
-        btn.MobData = mob
+        btn.BackgroundTransparency = 0.2
+        btn.Name = "MobBtn_" .. i
         
         local btnCorner = Instance.new("UICorner")
         btnCorner.Parent = btn
-        btnCorner.CornerRadius = UDim.new(0, 3)
+        btnCorner.CornerRadius = UDim.new(0, 4)
         
         btn.MouseButton1Click:Connect(function()
-            SelectedMob = mob.Model
-            SelectedMobName = mob.Name
-            SelectedMobPosition = mob.Position
-            for _, b in pairs(MobButtons) do
-                if b and b ~= btn then
+            SelectedMob = mobData.Name
+            local mobLabel = CombatContent:FindFirstChild("MobLabel")
+            if mobLabel then
+                mobLabel.Text = "🎯 Chọn Quái: " .. mobData.Name .. " (Lv." .. mobData.Level .. ")"
+            end
+            for _, b in pairs(mobList:GetChildren()) do
+                if b:IsA("TextButton") then
                     b.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
                     b.BackgroundTransparency = 0.2
                 end
             end
             btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
             btn.BackgroundTransparency = 0
-            print("🎯 Đã chọn quái: " .. mob.Name .. " (Lv." .. mob.Level .. ")")
         end)
-        table.insert(MobButtons, btn)
-        yOff = yOff + 32
-    end
-    mobScroll.CanvasSize = UDim2.new(0, 0, 0, yOff + 10)
-    
-    local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Name = "RefreshMobs"
-    refreshBtn.Parent = combat
-    refreshBtn.Size = UDim2.new(0.5, -6, 0, 28)
-    refreshBtn.Position = UDim2.new(0, 3, 0, 310)
-    refreshBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 100)
-    refreshBtn.Text = "🔄 Quét Lại"
-    refreshBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    refreshBtn.TextScaled = true
-    refreshBtn.Font = Enum.Font.GothamBold
-    refreshBtn.BorderSizePixel = 0
-    local corner2 = Instance.new("UICorner")
-    corner2.Parent = refreshBtn
-    corner2.CornerRadius = UDim.new(0, 4)
-    refreshBtn.MouseButton1Click:Connect(function()
-        UpdateMobList()
-        print("🔄 Đã quét lại danh sách quái")
-    end)
-    
-    local parentScroll = combat.Parent
-    if parentScroll and parentScroll:IsA("ScrollingFrame") then
-        parentScroll.CanvasSize = UDim2.new(0, 0, 0, 360)
-    end
-end
-
--- // ============ GET NEAREST MOB ============
-local function GetNearestMob()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-    
-    local nearest = nil
-    local nearestDist = 100
-    
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-            local name = v.Name:lower()
-            if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
-                local targetRoot = v.HumanoidRootPart
-                local humanoid = v.Humanoid
-                if humanoid and humanoid.Health > 0 then
-                    local dist = (root.Position - targetRoot.Position).Magnitude
-                    if dist < nearestDist then
-                        nearestDist = dist
-                        nearest = v
-                    end
-                end
-            end
-        end
-    end
-    return nearest
-end
-
--- // ============ GET WEAPON ============
-local function GetWeapon(toolName)
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    local backpack = LocalPlayer.Backpack
-    
-    local checkList = {}
-    for _, tool in pairs(char:GetChildren()) do
-        if tool:IsA("Tool") then table.insert(checkList, tool) end
-    end
-    for _, tool in pairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") then table.insert(checkList, tool) end
     end
     
-    for _, tool in pairs(checkList) do
-        local name = tool.Name:lower()
-        if toolName == "Melee" and (name:find("melee") or name:find("fist") or name:find("combat") or name:find("superhuman") or name:find("dark step") or name:find("electric") or name:find("fighting") or name:find("death step") or name:find("shark") or name:find("dragon")) then
-            return tool
-        elseif toolName == "Sword" and (name:find("sword") or name:find("blade") or name:find("katana") or name:find("cutlass") or name:find("saber") or name:find("dual") or name:find("pole") or name:find("trident") or name:find("pipe")) then
-            return tool
-        elseif toolName == "Gun" and (name:find("gun") or name:find("pistol") or name:find("rifle") or name:find("cannon") or name:find("bazooka") or name:find("musket") or name:find("flintlock") or name:find("shotgun")) then
-            return tool
-        elseif toolName == "Fruit" and (name:find("fruit") or name:find("devil") or name:find("blox") or name:find("flame") or name:find("ice") or name:find("light") or name:find("dark") or name:find("venom") or name:find("dough") or name:find("leopard") or name:find("dragon") or name:find("gravity")) then
-            return tool
-        end
-    end
-    return nil
+    local count = #MobsList
+    mobList.CanvasSize = UDim2.new(0, 0, 0, count * 32 + 10)
+    print("🔍 Đã quét được " .. count .. " quái")
 end
 
--- // ============ EQUIP WEAPON ============
-local function EquipWeapon(weaponType)
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local tool = GetWeapon(weaponType)
-    if tool then
-        if tool.Parent == LocalPlayer.Backpack then
-            tool.Parent = char
-        end
-        if tool.Parent == char then
-            char.Humanoid:EquipTool(tool)
-            return true
-        end
+-- // AUTO FARM
+function StartAutoFarm()
+    if FarmLoop then 
+        FarmLoop:Disconnect()
+        FarmLoop = nil
     end
-    return false
-end
-
--- // ============ USE SKILL ============
-local function UseSkill()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    for _, child in pairs(char:GetChildren()) do
-        if child:IsA("Tool") then
-            local remote = child:FindFirstChild("RemoteEvent") or child:FindFirstChild("Activate")
-            if remote then
-                remote:FireServer()
-                return true
-            end
-            if child:FindFirstChild("Handle") then
-                local handle = child.Handle
-                if handle and handle:FindFirstChild("ClickDetector") then
-                    handle.ClickDetector:Click()
-                    return true
-                end
-            end
-        end
-    end
-    local currentTool = char:FindFirstChildOfClass("Tool")
-    if currentTool then
-        local remote = currentTool:FindFirstChild("RemoteEvent")
-        if remote then
-            remote:FireServer()
-            return true
-        end
-    end
-    return false
-end
-
--- // ============ AUTO ATTACK ============
-local function AutoAttack(target)
-    if not target then return false end
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-    local targetRoot = target:FindFirstChild("HumanoidRootPart")
-    if not targetRoot then return false end
     
-    local lookVector = (targetRoot.Position - root.Position).Unit
-    root.CFrame = CFrame.new(root.Position, root.Position + lookVector)
-    
-    local humanoid = char:FindFirstChild("Humanoid")
-    if humanoid then
-        mouse1click()
-        return true
-    end
-    return false
-end
-
--- // ============ PULL MOBS ============
-local function GetMobsInRange(center, range)
-    local mobs = {}
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-            local name = v.Name:lower()
-            if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
-                local root = v.HumanoidRootPart
-                local humanoid = v.Humanoid
-                if humanoid and humanoid.Health > 0 then
-                    local dist = (center - root.Position).Magnitude
-                    if dist <= range then
-                        table.insert(mobs, v)
-                    end
-                end
-            end
-        end
-    end
-    return mobs
-end
-
-local function PullMobsToPoint(center, range)
-    if not center then return 0 end
-    local mobs = GetMobsInRange(center, range)
-    for _, mob in pairs(mobs) do
-        local root = mob:FindFirstChild("HumanoidRootPart")
-        local humanoid = mob:FindFirstChild("Humanoid")
-        if root and humanoid and humanoid.Health > 0 then
-            local dist = (center - root.Position).Magnitude
-            if dist > 5 then
-                local moveDir = (center - root.Position).Unit
-                local targetPos = center - moveDir * 3
-                local bv = root:FindFirstChild("PullVelocity")
-                if not bv then
-                    bv = Instance.new("BodyVelocity")
-                    bv.Name = "PullVelocity"
-                    bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                    bv.Parent = root
-                end
-                bv.Velocity = (targetPos - root.Position).Unit * 25
-                game:GetService("Debris"):AddItem(bv, 0.3)
-            end
-        end
-    end
-    return #mobs
-end
-
--- // ============ AUTO FARM LOOP ============
-local function AutoFarmLoop()
-    spawn(function()
-        while wait(0.1) do
-            if Toggles.AutoFarm then
-                local char = LocalPlayer.Character
-                if not char then continue end
-                local humanoid = char:FindFirstChild("Humanoid")
-                if not humanoid or humanoid.Health <= 0 then continue end
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if not root then continue end
-                
-                if Toggles.PullMobs then
-                    PullMobsToPoint(root.Position, 30)
-                    wait(0.3)
-                end
-                
-                local target = SelectedMob
-                local targetRoot = target and target:FindFirstChild("HumanoidRootPart")
-                local targetHumanoid = target and target:FindFirstChild("Humanoid")
-                
-                if not target or not target.Parent or not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
-                    local mobs = GetAllMobs()
-                    for _, m in pairs(mobs) do
-                        if m.Name == SelectedMobName and m.Humanoid.Health > 0 then
-                            SelectedMob = m.Model
-                            SelectedMobPosition = m.Position
-                            target = SelectedMob
-                            targetRoot = m.Root
-                            targetHumanoid = m.Humanoid
-                            break
-                        end
-                    end
-                    if not target then
-                        local nearest = GetNearestMob()
-                        if nearest then
-                            SelectedMob = nearest
-                            target = nearest
-                            targetRoot = nearest:FindFirstChild("HumanoidRootPart")
-                            targetHumanoid = nearest:FindFirstChild("Humanoid")
-                        else
-                            humanoid:MoveTo(humanoid.RootPart.Position)
-                            continue
-                        end
-                    end
-                end
-                
-                if target and targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-                    local dist = (root.Position - targetRoot.Position).Magnitude
-                    local attackDist = Toggles.PullMobs and 8 or 10
-                    
-                    if dist > attackDist then
-                        local moveDir = (targetRoot.Position - root.Position).Unit
-                        humanoid:MoveTo(root.Position + moveDir * math.min(dist - attackDist, 20))
-                    else
-                        humanoid:MoveTo(humanoid.RootPart.Position)
-                        EquipWeapon(AutoFarmWeapon)
-                        if Toggles.AutoSkill and AutoFarmSkillCooldown <= 0 then
-                            if UseSkill() then
-                                AutoFarmSkillCooldown = 2
-                            end
-                        end
-                        if AutoFarmAttackCooldown <= 0 then
-                            AutoAttack(target)
-                            AutoFarmAttackCooldown = 0.5
-                        end
-                    end
-                else
-                    humanoid:MoveTo(humanoid.RootPart.Position)
-                end
-                
-                if AutoFarmAttackCooldown > 0 then
-                    AutoFarmAttackCooldown = AutoFarmAttackCooldown - 0.1
-                end
-                if AutoFarmSkillCooldown > 0 then
-                    AutoFarmSkillCooldown = AutoFarmSkillCooldown - 0.1
-                end
-            end
-        end
-    end)
-end
-
--- // ============ NOCLIP ============
-local function NoclipLoop()
-    spawn(function()
-        while wait(0.05) do
-            if Toggles.Noclip then
-                local char = LocalPlayer.Character
-                if char then
-                    for _, part in pairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- // ============ SUPER JUMP ============
-local function SuperJumpLoop()
-    spawn(function()
-        while wait(0.1) do
-            if Toggles.SuperJump then
-                local char = LocalPlayer.Character
-                if char then
-                    local humanoid = char:FindFirstChild("Humanoid")
-                    if humanoid then
-                        humanoid.JumpPower = JumpPower
-                    end
-                end
-            else
-                local char = LocalPlayer.Character
-                if char then
-                    local humanoid = char:FindFirstChild("Humanoid")
-                    if humanoid and humanoid.JumpPower == JumpPower then
-                        humanoid.JumpPower = 50
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- // ============ FLY ============
-local function FlyLoop()
-    spawn(function()
-        while wait() do
-            if Toggles.Fly and flyEnabled then
-                local char = LocalPlayer.Character
-                if not char then
-                    flyEnabled = false
-                    if flyBodyPosition then flyBodyPosition:Destroy() end
-                    if flyBodyGyro then flyBodyGyro:Destroy() end
-                    flyBodyPosition = nil
-                    flyBodyGyro = nil
-                    continue
-                end
-                local rootPart = char:FindFirstChild("HumanoidRootPart")
-                if not rootPart then
-                    flyEnabled = false
-                    if flyBodyPosition then flyBodyPosition:Destroy() end
-                    if flyBodyGyro then flyBodyGyro:Destroy() end
-                    flyBodyPosition = nil
-                    flyBodyGyro = nil
-                    continue
-                end
-                if not flyBodyPosition then
-                    flyBodyPosition = Instance.new("BodyPosition")
-                    flyBodyPosition.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-                    flyBodyPosition.P = 2000
-                    flyBodyPosition.Parent = rootPart
-                end
-                if not flyBodyGyro then
-                    flyBodyGyro = Instance.new("BodyGyro")
-                    flyBodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-                    flyBodyGyro.P = 2000
-                    flyBodyGyro.D = 100
-                    flyBodyGyro.Parent = rootPart
-                end
-                local moveDirection = Vector3.new(0, 0, 0)
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then 
-                    moveDirection = moveDirection + Camera.CFrame.LookVector * Vector3.new(1, 0, 1)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then 
-                    moveDirection = moveDirection - Camera.CFrame.LookVector * Vector3.new(1, 0, 1)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then 
-                    moveDirection = moveDirection - Camera.CFrame.RightVector * Vector3.new(1, 0, 1)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then 
-                    moveDirection = moveDirection + Camera.CFrame.RightVector * Vector3.new(1, 0, 1)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 
-                    moveDirection = moveDirection + Vector3.new(0, 1, 0)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 
-                    moveDirection = moveDirection - Vector3.new(0, 1, 0)
-                end
-                if moveDirection.Magnitude > 0 then
-                    moveDirection = moveDirection.Unit * FlySpeed
-                end
-                flyBodyPosition.Position = rootPart.Position + moveDirection
-                flyBodyGyro.CFrame = CFrame.new(rootPart.Position, rootPart.Position + Camera.CFrame.LookVector)
-            else
-                if flyBodyPosition then flyBodyPosition:Destroy(); flyBodyPosition = nil end
-                if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
-            end
-        end
-    end)
-end
-
--- // FLY TOGGLE
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.F and Toggles.Fly then
+    FarmLoop = RunService.Heartbeat:Connect(function()
+        if not IsAutoFarm then return end
+        
         local char = LocalPlayer.Character
         if not char then return end
-        local rootPart = char:FindFirstChild("HumanoidRootPart")
-        if not rootPart then return end
-        flyEnabled = not flyEnabled
-        if flyEnabled then
-            flyBodyPosition = Instance.new("BodyPosition")
-            flyBodyPosition.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-            flyBodyPosition.P = 2000
-            flyBodyPosition.Parent = rootPart
-            flyBodyGyro = Instance.new("BodyGyro")
-            flyBodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-            flyBodyGyro.P = 2000
-            flyBodyGyro.D = 100
-            flyBodyGyro.Parent = rootPart
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then return end
+        
+        -- Tìm target gần nhất
+        local target = nil
+        local targetDist = math.huge
+        
+        for _, mobData in pairs(MobsList) do
+            if mobData.Model and mobData.Model.Parent and mobData.Humanoid and mobData.Humanoid.Health > 0 then
+                local dist = (root.Position - mobData.Root.Position).Magnitude
+                if dist < targetDist then
+                    targetDist = dist
+                    target = mobData
+                end
+            end
+        end
+        
+        if target then
+            FarmTarget = target
+            local hrp = target.Root
+            
+            -- Di chuyển đến gần target
+            if targetDist > 5 then
+                local direction = (hrp.Position - root.Position).Unit
+                local newPos = root.Position + direction * math.min(targetDist - 2, 15)
+                root.CFrame = CFrame.new(newPos, hrp.Position)
+            end
+            
+            -- Tấn công
+            if targetDist < 25 then
+                AttackTarget(target)
+            end
         else
-            if flyBodyPosition then flyBodyPosition:Destroy(); flyBodyPosition = nil end
-            if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
+            -- Không có quái, quét lại
+            if IsAutoFarm then
+                ScanMobs()
+            end
         end
+    end)
+end
+
+function StopAutoFarm()
+    if FarmLoop then
+        FarmLoop:Disconnect()
+        FarmLoop = nil
     end
-end)
-
--- // ============ ICON DRAG + CLICK - FIXED ============
-local function SetupIconDrag()
-    -- Bắt đầu input trên icon
-    ToggleBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            IsDraggingIcon = true
-            IsClickingIcon = true
-            DragStartPos = input.Position
-            IconStartPos = ToggleBtn.Position
-        end
-    end)
-
-    -- Di chuyển
-    ToggleBtn.InputChanged:Connect(function(input)
-        if IsDraggingIcon and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - DragStartPos
-            -- Nếu kéo quá ngưỡng -> đánh dấu là đang kéo, không phải click
-            if delta.Magnitude > DragThreshold then
-                IsClickingIcon = false
-            end
-            -- Cập nhật vị trí icon
-            local newX = math.clamp(IconStartPos.X.Offset + delta.X, 0, 95)
-            local newY = math.clamp(IconStartPos.Y.Offset + delta.Y, 0, 95)
-            ToggleBtn.Position = UDim2.new(0, newX, 0, newY)
-        end
-    end)
-
-    -- Kết thúc input
-    ToggleBtn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            -- Nếu là click (không kéo) -> toggle menu
-            if IsClickingIcon then
-                MenuOpen = not MenuOpen
-                MainFrame.Visible = MenuOpen
-                if MenuOpen then 
-                    ScanMap()
-                    UpdateMobList()
-                end
-                -- Hiệu ứng nhấp nháy
-                TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
-                wait(0.1)
-                TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
-            end
-            IsDraggingIcon = false
-            IsClickingIcon = false
-            DragStartPos = nil
-        end
-    end)
+    FarmTarget = nil
+    print("🛑 Đã dừng Auto Farm")
 end
 
--- // ============ CREATE TRACER ============
-local function CreateTracer(fromPart, toPart, color)
-    if not fromPart or not toPart then return nil end
-    for _, data in pairs(TracerLines) do
-        if data.From == fromPart and data.To == toPart then
-            if data.Line then data.Line:Destroy() end
-            return nil
+-- // ATTACK TARGET
+function AttackTarget(target)
+    if not target or not target.Model then return end
+    
+    -- Thử các phương thức tấn công khác nhau
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    -- Phương thức 1: Click vào quái
+    local hrp = target.Root
+    if hrp then
+        -- Simulate click
+        local args = {
+            [1] = hrp
+        }
+        
+        -- Thử các remote khác nhau
+        local remotes = {
+            "RemoteEvent",
+            "AttackRemote",
+            "CombatRemote",
+            "ClickRemote",
+            "DamageRemote",
+            "MeleeRemote",
+            "SwordRemote"
+        }
+        
+        for _, remoteName in pairs(remotes) do
+            local remote = ReplicatedStorage:FindFirstChild(remoteName)
+            if remote then
+                pcall(function()
+                    remote:FireServer(unpack(args))
+                end)
+            end
         end
+        
+        -- Phương thức 2: Dùng tool
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            pcall(function()
+                tool:Activate()
+            end)
+        end
+        
+        -- Phương thức 3: Click chuột
+        pcall(function()
+            Mouse.Button1Click()
+        end)
     end
-    local line = Instance.new("Part")
-    line.Name = "TracerLine"
-    line.Size = Vector3.new(0.1, 0.1, 0.1)
-    line.Anchored = true
-    line.CanCollide = false
-    line.Material = Enum.Material.Neon
-    line.BrickColor = BrickColor.new(color or "Bright red")
-    line.Transparency = 0.2
-    line.Parent = workspace
-    local att1 = Instance.new("Attachment")
-    att1.Parent = fromPart
-    local att2 = Instance.new("Attachment")
-    att2.Parent = toPart
-    local constraint = Instance.new("RopeConstraint")
-    constraint.Parent = line
-    constraint.Attachment0 = att1
-    constraint.Attachment1 = att2
-    constraint.Length = 0
-    constraint.Visible = true
-    constraint.Color = color or Color3.fromRGB(255, 0, 0)
-    constraint.Thickness = 0.05
-    return {
-        Line = line,
-        Constraint = constraint,
-        Att1 = att1,
-        Att2 = att2,
-        From = fromPart,
-        To = toPart
-    }
 end
 
--- // ============ UPDATE TRACERS ============
-local function UpdateTracers()
-    spawn(function()
-        while wait(TracerUpdateRate) do
-            for _, data in pairs(TracerLines) do
-                if data.Line then data.Line:Destroy() end
-            end
-            TracerLines = {}
-            local char = LocalPlayer.Character
-            if not char then continue end
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if not root then continue end
-            if Toggles.TracerPlayers then
-                for _, player in pairs(Players:GetPlayers()) do
-                    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                        local targetRoot = player.Character.HumanoidRootPart
-                        local tracer = CreateTracer(root, targetRoot, Color3.fromRGB(0, 255, 0))
-                        if tracer then table.insert(TracerLines, tracer) end
-                    end
-                end
-            end
-            if Toggles.TracerMobs then
-                for _, v in pairs(Workspace:GetDescendants()) do
-                    if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-                        local name = v.Name:lower()
-                        if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
-                            local targetRoot = v.HumanoidRootPart
-                            local tracer = CreateTracer(root, targetRoot, Color3.fromRGB(255, 200, 0))
-                            if tracer then table.insert(TracerLines, tracer) end
-                        end
-                    end
-                end
-            end
-        end
-    end)
+-- // TELEPORT
+function TeleportTo(pos)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local root = char.HumanoidRootPart
+        local oldPos = root.Position
+        
+        -- Tạo hiệu ứng ở vị trí cũ
+        local bp = Instance.new("Part")
+        bp.Size = Vector3.new(3, 3, 3)
+        bp.Position = oldPos
+        bp.Anchored = true
+        bp.CanCollide = false
+        bp.BrickColor = BrickColor.new("Bright blue")
+        bp.Material = Enum.Material.Neon
+        bp.Parent = workspace
+        TweenService:Create(bp, TweenInfo.new(0.5), {Size = Vector3.new(30, 30, 30), Transparency = 1}):Play()
+        Debris:AddItem(bp, 0.5)
+        
+        -- Tạo hiệu ứng ở vị trí mới
+        local bp2 = Instance.new("Part")
+        bp2.Size = Vector3.new(3, 3, 3)
+        bp2.Position = pos
+        bp2.Anchored = true
+        bp2.CanCollide = false
+        bp2.BrickColor = BrickColor.new("Bright green")
+        bp2.Material = Enum.Material.Neon
+        bp2.Parent = workspace
+        TweenService:Create(bp2, TweenInfo.new(0.5), {Size = Vector3.new(30, 30, 30), Transparency = 1}):Play()
+        Debris:AddItem(bp2, 0.5)
+        
+        -- Teleport
+        root.CFrame = CFrame.new(pos + Vector3.new(0, 5, 0))
+        print("🚀 Đã dịch chuyển đến: " .. SelectedMapName)
+    end
 end
 
--- // ============ SCAN MAP ============
-local function ScanMap()
+-- // BUILD TELEPORT LIST
+function BuildTeleportList()
     DetectedMapPoints = {}
+    local locList = TeleportContent:FindFirstChild("LocList")
+    if not locList then return end
+    
+    for _, child in pairs(locList:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    ScanMapPoints()
+    
+    for i, data in ipairs(DetectedMapPoints) do
+        local btn = Instance.new("TextButton")
+        btn.Parent = locList
+        btn.Size = UDim2.new(1, -4, 0, 28)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+        btn.Text = data.Name
+        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.Gotham
+        btn.BorderSizePixel = 0
+        btn.BackgroundTransparency = 0.2
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.Parent = btn
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        
+        btn.MouseButton1Click:Connect(function()
+            SelectedMapPoint = data.Position
+            SelectedMapName = data.Name
+            local locLabel = TeleportContent:FindFirstChild("LocLabel")
+            if locLabel then
+                locLabel.Text = "📍 " .. data.Name
+            end
+            for _, b in pairs(locList:GetChildren()) do
+                if b:IsA("TextButton") then
+                    b.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+                    b.BackgroundTransparency = 0.2
+                end
+            end
+            btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
+            btn.BackgroundTransparency = 0
+        end)
+    end
+    
+    locList.CanvasSize = UDim2.new(0, 0, 0, #DetectedMapPoints * 32 + 10)
+    print("🗺️ Đã quét được " .. #DetectedMapPoints .. " điểm")
+end
+
+-- // SCAN MAP POINTS
+function ScanMapPoints()
+    DetectedMapPoints = {}
+    
+    -- Scan models
     for _, model in pairs(Workspace:GetDescendants()) do
         if model:IsA("Model") and model:FindFirstChild("HumanoidRootPart") then
             local root = model.HumanoidRootPart
             if root and root.Position then
+                local name = model.Name
                 if not Players:GetPlayerFromCharacter(model) then
                     table.insert(DetectedMapPoints, {
-                        Name = model.Name,
+                        Name = "📍 " .. name,
                         Position = root.Position
                     })
                 end
             end
         end
     end
+    
+    -- Scan parts
     for _, part in pairs(Workspace:GetDescendants()) do
         if part:IsA("BasePart") and part.Size.Magnitude > 50 then
-            if not string.find(part.Name, "Terrain") and not string.find(part.Name, "Baseplate") then
+            local name = part.Name
+            if not string.find(name, "Terrain") and not string.find(name, "Baseplate") then
                 table.insert(DetectedMapPoints, {
-                    Name = part.Name,
+                    Name = "🏔️ " .. name,
                     Position = part.Position
                 })
             end
         end
     end
+    
     if #DetectedMapPoints == 0 then
-        table.insert(DetectedMapPoints, {Name = "Center", Position = Vector3.new(0, 10, 0)})
+        table.insert(DetectedMapPoints, {Name = "🌍 Center", Position = Vector3.new(0, 10, 0)})
+        table.insert(DetectedMapPoints, {Name = "⬆️ High", Position = Vector3.new(0, 200, 0)})
     end
-    if #DetectedMapPoints > 30 then
+    
+    if #DetectedMapPoints > 50 then
         local newList = {}
-        for i = 1, 30 do newList[i] = DetectedMapPoints[i] end
+        for i = 1, 50 do
+            newList[i] = DetectedMapPoints[i]
+        end
         DetectedMapPoints = newList
     end
-    UpdateTeleportBox()
-    return DetectedMapPoints
 end
 
--- // ============ CREATE ESP ============
-local function CreateESP(object, color, text, objectType)
+-- ============================================
+-- // PHẦN 6: ESP VỚI KHOẢNG CÁCH
+-- ============================================
+
+function CreateESP(object, color, text, objType)
     if not object or not object:IsA("BasePart") then return end
+    
+    -- Xóa ESP cũ
     for _, v in pairs(object:GetChildren()) do
         if v:IsA("BillboardGui") and v.Name == "MV_ESP" then
             v:Destroy()
         end
     end
+
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "MV_ESP"
-    billboard.Size = UDim2.new(0, 250, 0, 60)
+    billboard.Size = UDim2.new(0, 220, 0, 50)
     billboard.AlwaysOnTop = true
     billboard.Parent = object
     billboard.StudsOffset = Vector3.new(0, 3, 0)
+
     local label = Instance.new("TextLabel")
+    label.Name = "NameLabel"
     label.Size = UDim2.new(1, 0, 0.5, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = text or "ESP"
     label.TextColor3 = color or Color3.fromRGB(255, 0, 0)
@@ -824,7 +1149,9 @@ local function CreateESP(object, color, text, objectType)
     label.Font = Enum.Font.GothamBold
     label.TextStrokeTransparency = 0.2
     label.Parent = billboard
+
     local distLabel = Instance.new("TextLabel")
+    distLabel.Name = "DistLabel"
     distLabel.Size = UDim2.new(1, 0, 0.5, 0)
     distLabel.Position = UDim2.new(0, 0, 0.5, 0)
     distLabel.BackgroundTransparency = 1
@@ -834,16 +1161,17 @@ local function CreateESP(object, color, text, objectType)
     distLabel.Font = Enum.Font.Gotham
     distLabel.TextStrokeTransparency = 0.2
     distLabel.Parent = billboard
+
     table.insert(ESPObjects, {
         Object = object,
         Billboard = billboard,
         DistLabel = distLabel,
-        Type = objectType or "unknown"
+        Type = objType or "unknown"
     })
 end
 
--- // ============ UPDATE DISTANCE ============
-local function UpdateDistances()
+-- Update distance
+function UpdateDistances()
     spawn(function()
         while wait(ESPUpdateRate) do
             local char = LocalPlayer.Character
@@ -851,47 +1179,43 @@ local function UpdateDistances()
             local root = char:FindFirstChild("HumanoidRootPart")
             if not root then continue end
             local myPos = root.Position
-            for _, data in pairs(ESPObjects) do
+
+            for i = #ESPObjects, 1, -1 do
+                local data = ESPObjects[i]
                 if data.Object and data.Object.Parent then
                     local targetPos = data.Object.Position
                     if targetPos then
                         local dist = (myPos - targetPos).Magnitude
                         local distM = math.floor(dist)
-                        local color = distM < 50 and Color3.fromRGB(0, 255, 0) or 
-                                      distM < 150 and Color3.fromRGB(255, 255, 0) or 
-                                      Color3.fromRGB(255, 100, 0)
+                        
+                        local color
+                        if distM < 50 then
+                            color = Color3.fromRGB(0, 255, 0)      -- Xanh lá (gần)
+                        elseif distM < 150 then
+                            color = Color3.fromRGB(255, 255, 0)    -- Vàng (trung bình)
+                        else
+                            color = Color3.fromRGB(255, 100, 0)    -- Cam (xa)
+                        end
+                        
                         if data.DistLabel then
                             data.DistLabel.Text = distM .. "m"
                             data.DistLabel.TextColor3 = color
                         end
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- // ============ ESP LOOP ============
-local function ESPLoop()
-    spawn(function()
-        while wait(0.5) do
-            for i = #ESPObjects, 1, -1 do
-                local data = ESPObjects[i]
-                if data.Object and data.Object.Parent then
-                    local shouldKeep = false
-                    if data.Type == "player" and Toggles.ESPPlayers then shouldKeep = true
-                    elseif data.Type == "mob" and Toggles.ESPMobs then shouldKeep = true
-                    elseif data.Type == "fruit" and Toggles.ESPFruits then shouldKeep = true
-                    end
-                    if not shouldKeep then
-                        if data.Billboard then data.Billboard:Destroy() end
-                        table.remove(ESPObjects, i)
                     end
                 else
                     if data.Billboard then data.Billboard:Destroy() end
                     table.remove(ESPObjects, i)
                 end
             end
+        end
+    end)
+end
+
+-- ESP Loop
+function ESPLoop()
+    spawn(function()
+        while wait(0.5) do
+            -- PLAYER ESP
             if Toggles.ESPPlayers then
                 for _, player in pairs(Players:GetPlayers()) do
                     if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
@@ -906,23 +1230,33 @@ local function ESPLoop()
                     end
                 end
             end
+
+            -- MOB ESP
             if Toggles.ESPMobs then
                 for _, v in pairs(Workspace:GetDescendants()) do
                     if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
                         local name = v.Name:lower()
-                        if name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or name:find("marine") or name:find("pirate") or name:find("bandit") then
+                        local isMob = name:find("npc") or name:find("mob") or name:find("boss") or name:find("enemy") or
+                                     name:find("zombie") or name:find("skeleton") or name:find("spider")
+                        if isMob then
                             local root = v.HumanoidRootPart
                             local hasESP = false
                             for _, data in pairs(ESPObjects) do
                                 if data.Object == root then hasESP = true; break end
                             end
                             if not hasESP then
-                                CreateESP(root, Color3.fromRGB(255, 200, 0), "👾 " .. v.Name, "mob")
+                                local lvl = ""
+                                if v:FindFirstChild("Level") then
+                                    lvl = " Lv." .. v.Level.Value
+                                end
+                                CreateESP(root, Color3.fromRGB(255, 200, 0), "👾 " .. v.Name .. lvl, "mob")
                             end
                         end
                     end
                 end
             end
+
+            -- FRUIT ESP
             if Toggles.ESPFruits then
                 for _, v in pairs(Workspace:GetDescendants()) do
                     if v:IsA("Model") and v.Name:lower():find("fruit") then
@@ -939,363 +1273,38 @@ local function ESPLoop()
                     end
                 end
             end
-        end
-    end)
-end
 
--- // ============ UPDATE TELEPORT BOX ============
-local function UpdateTeleportBox()
-    local teleportBox = CategoryBoxes["🚀 Teleport"]
-    if not teleportBox then return end
-    for _, child in pairs(teleportBox:GetChildren()) do
-        if child:IsA("TextButton") or child:IsA("TextLabel") or child:IsA("ScrollingFrame") then
-            child:Destroy()
-        end
-    end
-    local label = Instance.new("TextLabel")
-    label.Parent = teleportBox
-    label.Size = UDim2.new(1, 0, 0, 25)
-    label.BackgroundTransparency = 1
-    label.Text = "📍 " .. SelectedMapName
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextScaled = true
-    label.Font = Enum.Font.GothamBold
-    local mapScroll = Instance.new("ScrollingFrame")
-    mapScroll.Parent = teleportBox
-    mapScroll.Size = UDim2.new(1, 0, 1, -30)
-    mapScroll.Position = UDim2.new(0, 0, 0, 28)
-    mapScroll.BackgroundTransparency = 1
-    mapScroll.BorderSizePixel = 0
-    mapScroll.CanvasSize = UDim2.new(0, #DetectedMapPoints * 120, 0, 0)
-    mapScroll.ScrollBarThickness = 4
-    mapScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
-    local mapList = Instance.new("UIListLayout")
-    mapList.Parent = mapScroll
-    mapList.FillDirection = Enum.FillDirection.Horizontal
-    mapList.Padding = UDim.new(0, 6)
-    for i, mapData in ipairs(DetectedMapPoints) do
-        local btn = Instance.new("TextButton")
-        btn.Parent = mapScroll
-        btn.Size = UDim2.new(0, 110, 1, -4)
-        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
-        btn.Text = mapData.Name
-        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.Gotham
-        btn.BorderSizePixel = 0
-        local corner = Instance.new("UICorner")
-        corner.Parent = btn
-        corner.CornerRadius = UDim.new(0, 4)
-        btn.MouseButton1Click:Connect(function()
-            SelectedMapPoint = mapData.Position
-            SelectedMapName = mapData.Name
-            label.Text = "📍 " .. mapData.Name
-            for _, child in pairs(mapScroll:GetChildren()) do
-                if child:IsA("TextButton") then
-                    child.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+            -- Cleanup
+            for i = #ESPObjects, 1, -1 do
+                local data = ESPObjects[i]
+                if data.Object and data.Object.Parent then
+                    local shouldKeep = false
+                    if data.Type == "player" and Toggles.ESPPlayers then
+                        shouldKeep = true
+                    elseif data.Type == "mob" and Toggles.ESPMobs then
+                        shouldKeep = true
+                    elseif data.Type == "fruit" and Toggles.ESPFruits then
+                        shouldKeep = true
+                    end
+                    if not shouldKeep then
+                        if data.Billboard then data.Billboard:Destroy() end
+                        table.remove(ESPObjects, i)
+                    end
+                else
+                    if data.Billboard then data.Billboard:Destroy() end
+                    table.remove(ESPObjects, i)
                 end
             end
-            btn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-        end)
-    end
-    local teleBtn = Instance.new("TextButton")
-    teleBtn.Parent = teleportBox
-    teleBtn.Size = UDim2.new(1, 0, 0, 35)
-    teleBtn.Position = UDim2.new(0, 0, 1, -35)
-    teleBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 200)
-    teleBtn.Text = "🚀 DỊCH CHUYỂN"
-    teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    teleBtn.TextScaled = true
-    teleBtn.Font = Enum.Font.GothamBold
-    teleBtn.BorderSizePixel = 0
-    teleBtn.MouseButton1Click:Connect(function()
-        if SelectedMapPoint then
-            local char = LocalPlayer.Character
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(SelectedMapPoint + Vector3.new(0, 5, 0))
-            end
         end
     end)
 end
 
--- // ============ CREATE TOGGLE BUTTON ============
-local function CreateToggleButton(parent, label, key)
-    local frame = Instance.new("Frame")
-    frame.Parent = parent
-    frame.Size = UDim2.new(1, -6, 0, 34)
-    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
-    frame.BackgroundTransparency = 0.3
-    frame.BorderSizePixel = 0
-    local corner = Instance.new("UICorner")
-    corner.Parent = frame
-    corner.CornerRadius = UDim.new(0, 4)
-    local labelBtn = Instance.new("TextButton")
-    labelBtn.Parent = frame
-    labelBtn.Size = UDim2.new(0.6, 0, 1, 0)
-    labelBtn.BackgroundTransparency = 1
-    labelBtn.Text = label
-    labelBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-    labelBtn.TextScaled = true
-    labelBtn.TextXAlignment = Enum.TextXAlignment.Left
-    labelBtn.Font = Enum.Font.Gotham
-    labelBtn.BorderSizePixel = 0
-    local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Parent = frame
-    toggleBtn.Size = UDim2.new(0.32, 0, 1, -4)
-    toggleBtn.Position = UDim2.new(0.68, 0, 0, 2)
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    toggleBtn.Text = "OFF"
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    toggleBtn.TextScaled = true
-    toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.BorderSizePixel = 0
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.Parent = toggleBtn
-    btnCorner.CornerRadius = UDim.new(0, 4)
-    local function ToggleFunc()
-        Toggles[key] = not Toggles[key]
-        if Toggles[key] then
-            toggleBtn.Text = "ON"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-        else
-            toggleBtn.Text = "OFF"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-        end
-    end
-    toggleBtn.MouseButton1Click:Connect(ToggleFunc)
-    labelBtn.MouseButton1Click:Connect(ToggleFunc)
-    return frame
-end
+-- ============================================
+-- // PHẦN 7: CÁC HÀM HỖ TRỢ
+-- ============================================
 
--- // ============ CREATE DROPDOWN ============
-local function CreateDropdown(parent, label, options, defaultOption, callback)
-    local frame = Instance.new("Frame")
-    frame.Parent = parent
-    frame.Size = UDim2.new(1, -6, 0, 34)
-    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
-    frame.BackgroundTransparency = 0.3
-    frame.BorderSizePixel = 0
-    local corner = Instance.new("UICorner")
-    corner.Parent = frame
-    corner.CornerRadius = UDim.new(0, 4)
-    local labelBtn = Instance.new("TextLabel")
-    labelBtn.Parent = frame
-    labelBtn.Size = UDim2.new(0.4, 0, 1, 0)
-    labelBtn.BackgroundTransparency = 1
-    labelBtn.Text = label
-    labelBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-    labelBtn.TextScaled = true
-    labelBtn.TextXAlignment = Enum.TextXAlignment.Left
-    labelBtn.Font = Enum.Font.Gotham
-    labelBtn.BorderSizePixel = 0
-    local dropdownBtn = Instance.new("TextButton")
-    dropdownBtn.Parent = frame
-    dropdownBtn.Size = UDim2.new(0.5, 0, 1, -4)
-    dropdownBtn.Position = UDim2.new(0.45, 0, 0, 2)
-    dropdownBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 55)
-    dropdownBtn.Text = defaultOption or options[1]
-    dropdownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    dropdownBtn.TextScaled = true
-    dropdownBtn.Font = Enum.Font.GothamBold
-    dropdownBtn.BorderSizePixel = 0
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.Parent = dropdownBtn
-    btnCorner.CornerRadius = UDim.new(0, 4)
-    local isOpen = false
-    local optionFrame = Instance.new("Frame")
-    optionFrame.Parent = frame
-    optionFrame.Size = UDim2.new(0.5, 0, 0, #options * 30)
-    optionFrame.Position = UDim2.new(0.45, 0, 1, 2)
-    optionFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
-    optionFrame.BackgroundTransparency = 0.1
-    optionFrame.BorderSizePixel = 0
-    optionFrame.Visible = false
-    optionFrame.ZIndex = 10
-    local optCorner = Instance.new("UICorner")
-    optCorner.Parent = optionFrame
-    optCorner.CornerRadius = UDim.new(0, 4)
-    local yOff = 0
-    for _, opt in ipairs(options) do
-        local optBtn = Instance.new("TextButton")
-        optBtn.Parent = optionFrame
-        optBtn.Size = UDim2.new(1, 0, 0, 30)
-        optBtn.Position = UDim2.new(0, 0, 0, yOff)
-        optBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 55)
-        optBtn.Text = opt
-        optBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-        optBtn.TextScaled = true
-        optBtn.Font = Enum.Font.Gotham
-        optBtn.BorderSizePixel = 0
-        optBtn.ZIndex = 10
-        optBtn.MouseButton1Click:Connect(function()
-            dropdownBtn.Text = opt
-            optionFrame.Visible = false
-            isOpen = false
-            if callback then callback(opt) end
-        end)
-        yOff = yOff + 30
-    end
-    dropdownBtn.MouseButton1Click:Connect(function()
-        isOpen = not isOpen
-        optionFrame.Visible = isOpen
-        frame.Size = UDim2.new(1, -6, 0, isOpen and 34 + #options * 30 or 34)
-    end)
-    return frame
-end
-
--- // ============ BUILD CATEGORIES ============
-local function BuildCategories()
-    for _, catName in ipairs(CategoryNames) do
-        local box = Instance.new("Frame")
-        box.Parent = CategoryScroll
-        box.Size = UDim2.new(0, 300, 1, -10)
-        box.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
-        box.BackgroundTransparency = 0.2
-        box.BorderSizePixel = 0
-        local corner = Instance.new("UICorner")
-        corner.Parent = box
-        corner.CornerRadius = UDim.new(0, 8)
-        local title = Instance.new("TextLabel")
-        title.Parent = box
-        title.Size = UDim2.new(1, 0, 0, 30)
-        title.BackgroundColor3 = Color3.fromRGB(40, 40, 70)
-        title.Text = catName
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
-        title.TextScaled = true
-        title.Font = Enum.Font.GothamBold
-        title.BorderSizePixel = 0
-        local titleCorner = Instance.new("UICorner")
-        titleCorner.Parent = title
-        titleCorner.CornerRadius = UDim.new(0, 8)
-        local content = Instance.new("ScrollingFrame")
-        content.Parent = box
-        content.Size = UDim2.new(1, -6, 1, -38)
-        content.Position = UDim2.new(0, 3, 0, 34)
-        content.BackgroundTransparency = 1
-        content.BorderSizePixel = 0
-        content.CanvasSize = UDim2.new(0, 0, 0, 0)
-        content.ScrollBarThickness = 3
-        local contentList = Instance.new("UIListLayout")
-        contentList.Parent = content
-        contentList.Padding = UDim.new(0, 4)
-        CategoryBoxes[catName] = content
-    end
-    
-    -- Combat
-    local combat = CategoryBoxes["⚔️ Combat"]
-    CreateToggleButton(combat, "🤖 Auto Farm", "AutoFarm")
-    CreateToggleButton(combat, "📦 Gom Quái", "PullMobs")
-    CreateDropdown(combat, "⚔️ Vũ Khí", AutoFarmWeapons, "Melee", function(selected)
-        AutoFarmWeapon = selected
-        print("🔫 Đã chọn vũ khí: " .. selected)
-    end)
-    CreateToggleButton(combat, "🌀 Auto Chiêu", "AutoSkill")
-    CreateToggleButton(combat, "👤 ESP Players", "ESPPlayers")
-    CreateToggleButton(combat, "👾 ESP Mobs", "ESPMobs")
-    CreateToggleButton(combat, "🍎 ESP Fruits", "ESPFruits")
-    UpdateMobList()
-    
-    -- Movement
-    local movement = CategoryBoxes["🦘 Movement"]
-    CreateToggleButton(movement, "🦘 Super Jump", "SuperJump")
-    CreateToggleButton(movement, "✈️ Fly (F)", "Fly")
-    CreateToggleButton(movement, "👻 Noclip", "Noclip")
-    local speedFrame = Instance.new("Frame")
-    speedFrame.Parent = movement
-    speedFrame.Size = UDim2.new(1, 0, 0, 40)
-    speedFrame.BackgroundTransparency = 1
-    local speedLabel = Instance.new("TextLabel")
-    speedLabel.Parent = speedFrame
-    speedLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-    speedLabel.BackgroundTransparency = 1
-    speedLabel.Text = "Fly Speed: " .. FlySpeed
-    speedLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
-    speedLabel.TextScaled = true
-    speedLabel.Font = Enum.Font.Gotham
-    speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-    local speedUp = Instance.new("TextButton")
-    speedUp.Parent = speedFrame
-    speedUp.Size = UDim2.new(0.15, 0, 0.5, 0)
-    speedUp.Position = UDim2.new(0.7, 0, 0.5, 0)
-    speedUp.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-    speedUp.Text = "+"
-    speedUp.TextColor3 = Color3.fromRGB(255, 255, 255)
-    speedUp.TextScaled = true
-    speedUp.BorderSizePixel = 0
-    speedUp.MouseButton1Click:Connect(function()
-        FlySpeed = FlySpeed + 5
-        speedLabel.Text = "Fly Speed: " .. FlySpeed
-    end)
-    local speedDown = Instance.new("TextButton")
-    speedDown.Parent = speedFrame
-    speedDown.Size = UDim2.new(0.15, 0, 0.5, 0)
-    speedDown.Position = UDim2.new(0.85, 0, 0.5, 0)
-    speedDown.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
-    speedDown.Text = "-"
-    speedDown.TextColor3 = Color3.fromRGB(255, 255, 255)
-    speedDown.TextScaled = true
-    speedDown.BorderSizePixel = 0
-    speedDown.MouseButton1Click:Connect(function()
-        FlySpeed = math.max(10, FlySpeed - 5)
-        speedLabel.Text = "Fly Speed: " .. FlySpeed
-    end)
-    local jumpFrame = Instance.new("Frame")
-    jumpFrame.Parent = movement
-    jumpFrame.Size = UDim2.new(1, 0, 0, 40)
-    jumpFrame.BackgroundTransparency = 1
-    local jumpLabel = Instance.new("TextLabel")
-    jumpLabel.Parent = jumpFrame
-    jumpLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-    jumpLabel.BackgroundTransparency = 1
-    jumpLabel.Text = "Jump Power: " .. JumpPower
-    jumpLabel.TextColor3 = Color3.fromRGB(200, 255, 200)
-    jumpLabel.TextScaled = true
-    jumpLabel.Font = Enum.Font.Gotham
-    jumpLabel.TextXAlignment = Enum.TextXAlignment.Left
-    local jumpUp = Instance.new("TextButton")
-    jumpUp.Parent = jumpFrame
-    jumpUp.Size = UDim2.new(0.15, 0, 0.5, 0)
-    jumpUp.Position = UDim2.new(0.7, 0, 0.5, 0)
-    jumpUp.BackgroundColor3 = Color3.fromRGB(0, 180, 0)
-    jumpUp.Text = "+"
-    jumpUp.TextColor3 = Color3.fromRGB(255, 255, 255)
-    jumpUp.TextScaled = true
-    jumpUp.BorderSizePixel = 0
-    jumpUp.MouseButton1Click:Connect(function()
-        JumpPower = JumpPower + 50
-        jumpLabel.Text = "Jump Power: " .. JumpPower
-    end)
-    local jumpDown = Instance.new("TextButton")
-    jumpDown.Parent = jumpFrame
-    jumpDown.Size = UDim2.new(0.15, 0, 0.5, 0)
-    jumpDown.Position = UDim2.new(0.85, 0, 0.5, 0)
-    jumpDown.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
-    jumpDown.Text = "-"
-    jumpDown.TextColor3 = Color3.fromRGB(255, 255, 255)
-    jumpDown.TextScaled = true
-    jumpDown.BorderSizePixel = 0
-    jumpDown.MouseButton1Click:Connect(function()
-        JumpPower = math.max(50, JumpPower - 50)
-        jumpLabel.Text = "Jump Power: " .. JumpPower
-    end)
-    
-    -- Visual
-    local visual = CategoryBoxes["👁️ Visual"]
-    CreateToggleButton(visual, "🔧 Fix Lag", "FixLag")
-    CreateToggleButton(visual, "👻 Ghost (F1)", "Ghost")
-    CreateToggleButton(visual, "🌙 Night Vision (F2)", "NightVision")
-    
-    -- Tracer
-    local tracer = CategoryBoxes["📡 Tracer"]
-    CreateToggleButton(tracer, "🔴 Tracer Players", "TracerPlayers")
-    CreateToggleButton(tracer, "🟡 Tracer Mobs", "TracerMobs")
-    
-    -- Teleport
-    UpdateTeleportBox()
-end
-
--- // ============ FIX LAG ============
-local function FixLag()
+-- Fix Lag
+local function FixLagLoop()
     spawn(function()
         while wait(1) do
             if Toggles.FixLag then
@@ -1312,8 +1321,115 @@ local function FixLag()
     end)
 end
 
--- // ============ GHOST ============
-local function GhostMode()
+-- Super Jump
+local function SuperJumpLoop()
+    spawn(function()
+        while wait(0.1) do
+            if Toggles.SuperJump then
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("Humanoid") then
+                    char.Humanoid.JumpPower = JumpPower
+                end
+            end
+        end
+    end)
+end
+
+-- Fly
+local function FlyLoop()
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        if input.KeyCode == Enum.KeyCode.F and Toggles.Fly then
+            local char = LocalPlayer.Character
+            if not char then return end
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            if not rootPart then return end
+
+            FlyEnabled = not FlyEnabled
+            if FlyEnabled then
+                BodyVelocity = Instance.new("BodyVelocity")
+                BodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+                BodyVelocity.Parent = rootPart
+                print("✈️ Fly: ON")
+            else
+                if BodyVelocity then 
+                    BodyVelocity:Destroy() 
+                    BodyVelocity = nil
+                end
+                print("✈️ Fly: OFF")
+            end
+        end
+    end)
+
+    spawn(function()
+        while wait() do
+            if FlyEnabled and Toggles.Fly and BodyVelocity then
+                local rootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if not rootPart then
+                    FlyEnabled = false
+                    if BodyVelocity then BodyVelocity:Destroy() end
+                    BodyVelocity = nil
+                    continue
+                end
+
+                local moveDirection = Vector3.new(0, 0, 0)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then 
+                    moveDirection = moveDirection + Camera.CFrame.LookVector * Vector3.new(1, 0, 1) 
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then 
+                    moveDirection = moveDirection - Camera.CFrame.LookVector * Vector3.new(1, 0, 1) 
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then 
+                    moveDirection = moveDirection - Camera.CFrame.RightVector * Vector3.new(1, 0, 1) 
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then 
+                    moveDirection = moveDirection + Camera.CFrame.RightVector * Vector3.new(1, 0, 1) 
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then 
+                    moveDirection = moveDirection + Vector3.new(0, 1, 0) 
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then 
+                    moveDirection = moveDirection - Vector3.new(0, 1, 0) 
+                end
+
+                if moveDirection.Magnitude > 0 then
+                    moveDirection = moveDirection.Unit * FlySpeed
+                end
+                BodyVelocity.Velocity = moveDirection
+            end
+        end
+    end)
+end
+
+-- Noclip
+local function NoclipLoop()
+    spawn(function()
+        while wait(0.1) do
+            if Toggles.Noclip then
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            else
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = true
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Ghost
+local function GhostLoop()
     spawn(function()
         while wait(0.1) do
             if Toggles.Ghost then
@@ -1321,14 +1437,8 @@ local function GhostMode()
                 if char then
                     for _, part in pairs(char:GetDescendants()) do
                         if part:IsA("BasePart") then
-                            part.Transparency = GhostStealth
-                            if GhostStealth <= 0.1 then part.CanCollide = false end
-                        end
-                    end
-                    local head = char:FindFirstChild("Head")
-                    if head then
-                        for _, child in pairs(head:GetChildren()) do
-                            if child:IsA("BillboardGui") then child.Enabled = false end
+                            part.Transparency = 0.3
+                            part.CanCollide = false
                         end
                     end
                 end
@@ -1341,20 +1451,14 @@ local function GhostMode()
                             part.CanCollide = true
                         end
                     end
-                    local head = char:FindFirstChild("Head")
-                    if head then
-                        for _, child in pairs(head:GetChildren()) do
-                            if child:IsA("BillboardGui") then child.Enabled = true end
-                        end
-                    end
                 end
             end
         end
     end)
 end
 
--- // ============ NIGHT VISION ============
-local function NightVision()
+-- Night Vision
+local function NightVisionLoop()
     spawn(function()
         while wait(0.5) do
             if Toggles.NightVision then
@@ -1379,166 +1483,71 @@ local function NightVision()
     end)
 end
 
--- // ============ ANTI-IDLE ============
-local function AntiIdle()
+-- Anti-Idle
+local function AntiIdleLoop()
     spawn(function()
         while wait(60) do
-            LocalPlayer.Idled:Connect(function()
-                game:GetService("VirtualUser"):ClickButton2(Vector2.new())
+            pcall(function()
+                LocalPlayer.Idled:Connect(function()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
             end)
         end
     end)
 end
 
--- // ============ HOTKEYS ============
+-- ============================================
+-- // PHẦN 8: KHỞI TẠO
+-- ============================================
+
+-- Tạo UI
+BuildCombatTab()
+BuildMovementTab()
+BuildESPTab()
+BuildTeleportTab()
+BuildSettingsTab()
+
+-- Khởi tạo các loop
+FixLagLoop()
+SuperJumpLoop()
+FlyLoop()
+NoclipLoop()
+ESPLoop()
+UpdateDistances()
+GhostLoop()
+NightVisionLoop()
+AntiIdleLoop()
+
+-- Scan ban đầu
+spawn(function()
+    wait(1)
+    ScanMobs()
+    BuildTeleportList()
+    UpdateAllCanvas()
+end)
+
+-- // Hotkeys
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.M then
         MenuOpen = not MenuOpen
         MainFrame.Visible = MenuOpen
-        if MenuOpen then 
-            ScanMap()
-            UpdateMobList()
+        if MenuOpen then
+            BuildTeleportList()
+            ScanMobs()
         end
     end
     if input.KeyCode == Enum.KeyCode.F1 then
         Toggles.Ghost = not Toggles.Ghost
+        print("👻 Ghost: " .. (Toggles.Ghost and "ON" or "OFF"))
     end
     if input.KeyCode == Enum.KeyCode.F2 then
         Toggles.NightVision = not Toggles.NightVision
+        print("🌙 Night Vision: " .. (Toggles.NightVision and "ON" or "OFF"))
     end
 end)
 
--- // ============ CREATE UI ============
-local function CreateUI()
-    ScreenGui.Parent = LocalPlayer.PlayerGui
-    ScreenGui.Name = "MVHack"
-    ScreenGui.ResetOnSpawn = false
-
-    MainFrame.Parent = ScreenGui
-    MainFrame.Size = UDim2.new(0, 600, 0, 330)
-    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -165)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 25)
-    MainFrame.BackgroundTransparency = 0.05
-    MainFrame.Active = true
-    MainFrame.Draggable = true
-    MainFrame.Visible = false
-    MainFrame.BorderSizePixel = 0
-    MainFrame.ClipsDescendants = true
-
-    local blur = Instance.new("BlurEffect")
-    blur.Parent = MainFrame
-    blur.Size = 10
-
-    Title.Parent = MainFrame
-    Title.Size = UDim2.new(1, 0, 0, 35)
-    Title.BackgroundColor3 = Color3.fromRGB(30, 30, 60)
-    Title.Text = "⚡ MV HACK v6.4 - Fixed Icon"
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.TextScaled = true
-    Title.Font = Enum.Font.GothamBold
-    Title.BorderSizePixel = 0
-
-    CloseBtn.Parent = MainFrame
-    CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-    CloseBtn.Position = UDim2.new(1, -35, 0, 3)
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
-    CloseBtn.Text = "✕"
-    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseBtn.TextScaled = true
-    CloseBtn.BorderSizePixel = 0
-    CloseBtn.BackgroundTransparency = 0.3
-    CloseBtn.MouseButton1Click:Connect(function()
-        MenuOpen = false
-        MainFrame.Visible = false
-    end)
-
-    ResizeHandle.Parent = MainFrame
-    ResizeHandle.Size = UDim2.new(0, 20, 0, 20)
-    ResizeHandle.Position = UDim2.new(1, -20, 1, -20)
-    ResizeHandle.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
-    ResizeHandle.BackgroundTransparency = 0.5
-    ResizeHandle.ZIndex = 10
-
-    ResizeCorner.Parent = ResizeHandle
-    ResizeCorner.Size = UDim2.new(1, 0, 1, 0)
-    ResizeCorner.BackgroundTransparency = 1
-    ResizeCorner.Image = "rbxassetid://6023420974"
-    ResizeCorner.ImageColor3 = Color3.fromRGB(200, 200, 255)
-
-    ResizeHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            IsResizing = true
-            ResizeStartPos = input.Position
-            ResizeStartSize = MainFrame.Size
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if IsResizing and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - ResizeStartPos
-            local newWidth = math.clamp(ResizeStartSize.X.Offset + delta.X, MinSize, MaxSize)
-            local newHeight = math.clamp(ResizeStartSize.Y.Offset + delta.Y, 250, 450)
-            MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
-        end
-    end)
-
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            IsResizing = false
-        end
-    end)
-
-    -- ICON MV
-    ToggleBtn.Parent = ScreenGui
-    ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
-    ToggleBtn.Position = UDim2.new(0, 15, 0.5, -30)
-    ToggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 50)
-    ToggleBtn.Text = "MV"
-    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ToggleBtn.TextScaled = true
-    ToggleBtn.Font = Enum.Font.GothamBold
-    ToggleBtn.BorderSizePixel = 0
-    ToggleBtn.BackgroundTransparency = 0.2
-    ToggleBtn.ZIndex = 999
-
-    local glow = Instance.new("UICorner")
-    glow.Parent = ToggleBtn
-    glow.CornerRadius = UDim.new(1, 0)
-
-    SetupIconDrag()
-
-    -- CATEGORY SCROLL
-    CategoryScroll.Parent = MainFrame
-    CategoryScroll.Size = UDim2.new(1, -10, 1, -45)
-    CategoryScroll.Position = UDim2.new(0, 5, 0, 40)
-    CategoryScroll.BackgroundTransparency = 1
-    CategoryScroll.BorderSizePixel = 0
-    CategoryScroll.CanvasSize = UDim2.new(0, #CategoryNames * 320, 0, 0)
-    CategoryScroll.ScrollBarThickness = 6
-    CategoryScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 150)
-
-    CategoryList.Parent = CategoryScroll
-    CategoryList.FillDirection = Enum.FillDirection.Horizontal
-    CategoryList.Padding = UDim.new(0, 8)
-
-    BuildCategories()
-    ScanMap()
-    UpdateMobList()
-end
-
--- // ============ KHỞI TẠO ============
-CreateUI()
-FixLag()
-SuperJumpLoop()
-FlyLoop()
-NoclipLoop()
-AutoFarmLoop()
-ESPLoop()
-UpdateDistances()
-UpdateTracers()
-GhostMode()
-NightVision()
-AntiIdle()
-
-print("⚡ MV HACK v6.4 LOADED - Icon Click + Drag Fixed - Boss man, fuck yeah!")
+print("⚡ MV HUB v5.0 LOADED SUCCESSFULLY!")
+print("📌 M - Menu | F - Fly | F1 - Ghost | F2 - Night Vision")
+print("📌 Auto Farm tự động tìm và tấn công quái gần nhất")
+print("📌 ESP hiển thị khoảng cách theo mét với màu sắc tương ứng")
